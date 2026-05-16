@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npx expo *)",
+      "Bash(npm uninstall *)",
+      "PowerShell(Get-NetTCPConnection *)"
+    ]
+  }
+}
