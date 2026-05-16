@@ -218,24 +218,7 @@ export default function EquipeScreen() {
     }
     setInviting(true);
 
-    const { data: foundList, error: findErr } = await supabase
-      .from('membros')
-      .select('user_id, nome, email')
-      .eq('email', emailLc)
-      .neq('empresa_id', empresaId)
-      .limit(1);
-    if (findErr) {
-      setInviting(false);
-      Alert.alert('Erro', findErr.message);
-      return;
-    }
-    if (!foundList || foundList.length === 0) {
-      setInviting(false);
-      showToast('⚠️ E-mail não cadastrado. O funcionário deve criar uma conta no app primeiro.');
-      return;
-    }
-    const found = foundList[0];
-
+    // 1) Verifica duplicata na empresa atual
     const { data: existsList, error: existsErr } = await supabase
       .from('membros')
       .select('id')
@@ -253,13 +236,26 @@ export default function EquipeScreen() {
       return;
     }
 
-    const { error: insErr } = await supabase.from('membros').insert({
+    // 2) Tenta encontrar user_id/nome já existentes (caso a pessoa já tenha conta em outra empresa)
+    const { data: foundList } = await supabase
+      .from('membros')
+      .select('user_id, nome')
+      .eq('email', emailLc)
+      .not('user_id', 'is', null)
+      .limit(1);
+    const found = foundList && foundList.length > 0 ? foundList[0] : null;
+
+    // 3) Insere convite. user_id fica null se o convidado ainda não tem conta;
+    // será preenchido pelo OnboardingScreen quando ele criar a conta.
+    const payload = {
       empresa_id: empresaId,
-      user_id: found.user_id,
       email: emailLc,
-      nome: found.nome || null,
       papel: invitePapel,
-    });
+      user_id: found?.user_id || null,
+      nome: found?.nome || null,
+    };
+
+    const { error: insErr } = await supabase.from('membros').insert(payload);
     setInviting(false);
     if (insErr) {
       Alert.alert('Erro', insErr.message);
@@ -268,7 +264,11 @@ export default function EquipeScreen() {
 
     setInviteEmail('');
     setInvitePapel('operador');
-    showToast('✅ Membro adicionado!');
+    showToast(
+      found?.user_id
+        ? '✅ Membro adicionado!'
+        : '✅ Convite registrado! O membro será vinculado ao criar a conta.'
+    );
     await loadMembros();
   };
 

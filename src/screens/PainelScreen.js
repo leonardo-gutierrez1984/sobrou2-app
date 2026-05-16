@@ -137,12 +137,14 @@ export default function PainelScreen() {
   const [empresaId, setEmpresaId] = useState(null);
   const [loadingMembro, setLoadingMembro] = useState(true);
 
-  const [dataInicio, setDataInicio] = useState(() => startOfWeek(new Date()));
-  const [dataFim, setDataFim] = useState(() => endOfWeek(new Date()));
+  const [dataInicio, setDataInicio] = useState(() => new Date());
+  const [dataFim, setDataFim] = useState(() => new Date());
   const [showPickerInicio, setShowPickerInicio] = useState(false);
   const [showPickerFim, setShowPickerFim] = useState(false);
+  const [tempPickerDate, setTempPickerDate] = useState(new Date());
 
   const [searchProduto, setSearchProduto] = useState('');
+  const [searchFocused, setSearchFocused] = useState(false);
   const [filtroDestino, setFiltroDestino] = useState('Todos');
   const [destinoPickerOpen, setDestinoPickerOpen] = useState(false);
 
@@ -260,6 +262,24 @@ export default function PainelScreen() {
       return true;
     });
   }, [lancamentos, searchProduto, filtroDestino]);
+
+  // Produtos únicos do período (para o autocomplete)
+  const produtosDisponiveis = useMemo(() => {
+    const set = new Set();
+    lancamentos.forEach((l) => {
+      const nome = (l.produto_nome || '').trim();
+      if (nome) set.add(nome);
+    });
+    return Array.from(set).sort((a, b) =>
+      a.localeCompare(b, 'pt-BR', { sensitivity: 'base' })
+    );
+  }, [lancamentos]);
+
+  const produtosDropdown = useMemo(() => {
+    const q = searchProduto.trim().toLowerCase();
+    if (!q) return produtosDisponiveis;
+    return produtosDisponiveis.filter((n) => n.toLowerCase().includes(q));
+  }, [produtosDisponiveis, searchProduto]);
 
   const totals = useMemo(() => {
     const total = lancamentosFiltrados.length;
@@ -855,16 +875,39 @@ export default function PainelScreen() {
     }
   };
 
+  const safeDate = (d) =>
+    d instanceof Date && !isNaN(d.getTime()) ? d : new Date();
+
+  const openPickerInicio = () => {
+    setTempPickerDate(safeDate(dataInicio));
+    setShowPickerInicio(true);
+  };
+
+  const openPickerFim = () => {
+    setTempPickerDate(safeDate(dataFim));
+    setShowPickerFim(true);
+  };
+
+  const confirmPickerInicio = () => {
+    setDataInicio(safeDate(tempPickerDate));
+    setShowPickerInicio(false);
+  };
+
+  const confirmPickerFim = () => {
+    setDataFim(safeDate(tempPickerDate));
+    setShowPickerFim(false);
+  };
+
   const onChangeDate = (which, event, selectedDate) => {
     if (Platform.OS === 'android') {
       if (which === 'inicio') setShowPickerInicio(false);
       else setShowPickerFim(false);
       if (event?.type !== 'set' || !selectedDate) return;
-    }
-    if (selectedDate) {
       if (which === 'inicio') setDataInicio(selectedDate);
       else setDataFim(selectedDate);
+      return;
     }
+    if (selectedDate) setTempPickerDate(selectedDate);
   };
 
   if (loadingMembro) {
@@ -906,7 +949,7 @@ export default function PainelScreen() {
               <Text style={styles.label}>DE</Text>
               <TouchableOpacity
                 style={[styles.input, styles.dateInput]}
-                onPress={() => setShowPickerInicio(true)}
+                onPress={openPickerInicio}
                 activeOpacity={0.7}
               >
                 <Text style={styles.dateValue}>{fmtDateBR(dataInicio)}</Text>
@@ -917,7 +960,7 @@ export default function PainelScreen() {
               <Text style={styles.label}>ATÉ</Text>
               <TouchableOpacity
                 style={[styles.input, styles.dateInput]}
-                onPress={() => setShowPickerFim(true)}
+                onPress={openPickerFim}
                 activeOpacity={0.7}
               >
                 <Text style={styles.dateValue}>{fmtDateBR(dataFim)}</Text>
@@ -972,9 +1015,19 @@ export default function PainelScreen() {
                 style={styles.searchInput}
                 value={searchProduto}
                 onChangeText={setSearchProduto}
+                onFocus={() => setSearchFocused(true)}
+                onBlur={() => setSearchFocused(false)}
                 placeholder="Filtrar por produto..."
                 placeholderTextColor={colors.muted}
               />
+              {searchProduto ? (
+                <TouchableOpacity
+                  onPress={() => setSearchProduto('')}
+                  hitSlop={8}
+                >
+                  <Ionicons name="close-circle" size={18} color={colors.muted} />
+                </TouchableOpacity>
+              ) : null}
             </View>
             <View style={styles.col}>
               <TouchableOpacity
@@ -989,6 +1042,26 @@ export default function PainelScreen() {
               </TouchableOpacity>
             </View>
           </View>
+
+          {searchFocused && produtosDropdown.length > 0 ? (
+            <View style={styles.searchDropdown}>
+              {produtosDropdown.slice(0, 3).map((nome) => (
+                <TouchableOpacity
+                  key={nome}
+                  style={styles.searchDropdownItem}
+                  onPress={() => {
+                    setSearchProduto(nome);
+                    setSearchFocused(false);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.searchDropdownText} numberOfLines={1}>
+                    {nome}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : null}
         </View>
 
         {/* 3. Alert estimado */}
@@ -1321,7 +1394,7 @@ export default function PainelScreen() {
       {/* DatePickers */}
       {showPickerInicio && Platform.OS === 'android' ? (
         <DateTimePicker
-          value={dataInicio}
+          value={safeDate(dataInicio)}
           mode="date"
           display="default"
           onChange={(e, d) => onChangeDate('inicio', e, d)}
@@ -1329,7 +1402,7 @@ export default function PainelScreen() {
       ) : null}
       {showPickerFim && Platform.OS === 'android' ? (
         <DateTimePicker
-          value={dataFim}
+          value={safeDate(dataFim)}
           mode="date"
           display="default"
           onChange={(e, d) => onChangeDate('fim', e, d)}
@@ -1349,7 +1422,7 @@ export default function PainelScreen() {
               <View style={styles.pickerCard}>
                 <Text style={styles.pickerTitle}>Data inicial</Text>
                 <DateTimePicker
-                  value={dataInicio}
+                  value={safeDate(tempPickerDate)}
                   mode="date"
                   display="spinner"
                   onChange={(e, d) => onChangeDate('inicio', e, d)}
@@ -1358,9 +1431,15 @@ export default function PainelScreen() {
                 />
                 <TouchableOpacity
                   style={styles.pickerConfirm}
-                  onPress={() => setShowPickerInicio(false)}
+                  onPress={confirmPickerInicio}
                 >
                   <Text style={styles.pickerConfirmText}>OK</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.pickerCancel}
+                  onPress={() => setShowPickerInicio(false)}
+                >
+                  <Text style={styles.pickerCancelText}>Cancelar</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1376,7 +1455,7 @@ export default function PainelScreen() {
               <View style={styles.pickerCard}>
                 <Text style={styles.pickerTitle}>Data final</Text>
                 <DateTimePicker
-                  value={dataFim}
+                  value={safeDate(tempPickerDate)}
                   mode="date"
                   display="spinner"
                   onChange={(e, d) => onChangeDate('fim', e, d)}
@@ -1385,9 +1464,15 @@ export default function PainelScreen() {
                 />
                 <TouchableOpacity
                   style={styles.pickerConfirm}
-                  onPress={() => setShowPickerFim(false)}
+                  onPress={confirmPickerFim}
                 >
                   <Text style={styles.pickerConfirmText}>OK</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.pickerCancel}
+                  onPress={() => setShowPickerFim(false)}
+                >
+                  <Text style={styles.pickerCancelText}>Cancelar</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1586,6 +1671,24 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     fontSize: 15,
     color: colors.text,
+  },
+  searchDropdown: {
+    marginTop: 8,
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: '#333333',
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  searchDropdownItem: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2a2a2a',
+  },
+  searchDropdownText: {
+    color: colors.text,
+    fontSize: 14,
   },
 
   // 3. Alert
@@ -1862,14 +1965,19 @@ const styles = StyleSheet.create({
 
   // 9. Lançamentos
   lancamentosWrap: {
+    backgroundColor: '#2a2a2a',
+    borderWidth: 1,
+    borderColor: '#333333',
+    borderRadius: 14,
+    padding: 16,
     marginHorizontal: 16,
-    marginTop: 4,
+    marginBottom: 12,
   },
   lancamentosHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 10,
+    paddingVertical: 4,
     marginBottom: 8,
   },
   lancamentosTitle: {
@@ -1975,5 +2083,19 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '700',
+  },
+  pickerCancel: {
+    borderWidth: 1,
+    borderColor: '#333333',
+    backgroundColor: 'transparent',
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  pickerCancelText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

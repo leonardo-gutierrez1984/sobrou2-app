@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,68 @@ export default function OnboardingScreen({ onComplete }) {
   const [nome, setNome] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        const email = session?.user?.email;
+        const uid = session?.user?.id;
+        if (!email || !uid) {
+          if (mounted) setChecking(false);
+          return;
+        }
+
+        // 1) Busca TODAS as linhas em membros com este email
+        const { data: rows, error: memErr } = await supabase
+          .from('membros')
+          .select('id, empresa_id, user_id, papel')
+          .eq('email', email);
+
+        if (!mounted) return;
+
+        if (memErr) {
+          console.warn('[Onboarding] verificação de membro falhou:', memErr.message);
+          setChecking(false);
+          return;
+        }
+
+        if (rows && rows.length > 0) {
+          // 2) Atualiza user_id nas linhas que ainda não têm
+          const semUserId = rows.filter((r) => !r.user_id);
+          if (semUserId.length > 0) {
+            const ids = semUserId.map((r) => r.id);
+            const { error: updErr } = await supabase
+              .from('membros')
+              .update({ user_id: uid })
+              .in('id', ids);
+            if (updErr) {
+              console.warn('[Onboarding] atualizar user_id falhou:', updErr.message);
+              if (mounted) setChecking(false);
+              return;
+            }
+          }
+          // 3) Convite vinculado — pula a criação de empresa
+          onComplete?.();
+          return;
+        }
+
+        // Nenhum convite — segue para o formulário de criação de empresa
+        setChecking(false);
+      } catch (err) {
+        console.warn('[Onboarding] erro inesperado:', err?.message);
+        if (mounted) setChecking(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [onComplete]);
 
   const handleStart = async () => {
     setError('');
@@ -68,6 +130,17 @@ export default function OnboardingScreen({ onComplete }) {
 
     onComplete?.();
   };
+
+  if (checking) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.checkingWrap}>
+          <ActivityIndicator color={colors.accent} size="large" />
+          <Text style={styles.checkingText}>Verificando seu cadastro...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -167,4 +240,16 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   buttonDisabled: { opacity: 0.6 },
+  checkingWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  checkingText: {
+    color: colors.muted,
+    fontSize: 14,
+    marginTop: 16,
+    textAlign: 'center',
+  },
 });

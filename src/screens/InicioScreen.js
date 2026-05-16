@@ -64,6 +64,7 @@ export default function InicioScreen() {
   const [bootLoading, setBootLoading] = useState(true);
 
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [tempDate, setTempDate] = useState(new Date());
   const [verTodos, setVerTodos] = useState(false);
 
   const [editingLanc, setEditingLanc] = useState(null);
@@ -199,9 +200,29 @@ export default function InicioScreen() {
     [lancamentos, verTodos]
   );
 
-  const handleDateChange = (event, date) => {
+  const openDatePicker = () => {
+    setTempDate(selectedDate);
+    setShowDatePicker(true);
+  };
+
+  const cancelDatePicker = () => {
     setShowDatePicker(false);
-    if (date) setSelectedDate(date);
+  };
+
+  const confirmDatePicker = () => {
+    setSelectedDate(tempDate);
+    setShowDatePicker(false);
+  };
+
+  const handleDateChange = (event, date) => {
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+      if (event?.type === 'set' && date) {
+        setSelectedDate(date);
+      }
+      return;
+    }
+    if (date) setTempDate(date);
   };
 
   const isHoje = isSameDay(selectedDate, new Date());
@@ -418,7 +439,7 @@ export default function InicioScreen() {
               </>
             ) : null}
             <TouchableOpacity
-              onPress={() => setShowDatePicker(true)}
+              onPress={openDatePicker}
               hitSlop={10}
               style={styles.lupaIconBtn}
             >
@@ -513,14 +534,52 @@ export default function InicioScreen() {
         )}
       </ScrollView>
 
-      {showDatePicker ? (
+      {Platform.OS === 'android' && showDatePicker ? (
         <DateTimePicker
           value={selectedDate}
           mode="date"
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          display="default"
           maximumDate={new Date()}
           onChange={handleDateChange}
         />
+      ) : null}
+
+      {Platform.OS === 'ios' ? (
+        <Modal
+          visible={showDatePicker}
+          transparent
+          animationType="fade"
+          onRequestClose={cancelDatePicker}
+        >
+          <View style={styles.dateModalBackdrop}>
+            <View style={styles.dateModalCard}>
+              <Text style={styles.dateModalTitle}>Selecionar data</Text>
+              <DateTimePicker
+                value={tempDate}
+                mode="date"
+                display="spinner"
+                maximumDate={new Date()}
+                onChange={handleDateChange}
+                textColor="#fdfaf4"
+                themeVariant="dark"
+              />
+              <TouchableOpacity
+                style={styles.dateModalConfirm}
+                onPress={confirmDatePicker}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.dateModalConfirmText}>Confirmar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.dateModalCancel}
+                onPress={cancelDatePicker}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.dateModalCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       ) : null}
 
       {/* Modal de edição */}
@@ -852,6 +911,56 @@ const styles = StyleSheet.create({
   },
   lupaIconBtn: {
     padding: 4,
+  },
+
+  dateModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  dateModalCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 16,
+    padding: 20,
+  },
+  dateModalTitle: {
+    color: '#fdfaf4',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  dateModalConfirm: {
+    backgroundColor: '#e05c2a',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+  },
+  dateModalConfirmText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  dateModalCancel: {
+    borderWidth: 1,
+    borderColor: '#333333',
+    backgroundColor: 'transparent',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  dateModalCancelText: {
+    color: '#fdfaf4',
+    fontSize: 14,
+    fontWeight: '600',
   },
   lupaBtn: {
     padding: 8,
