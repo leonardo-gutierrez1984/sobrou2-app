@@ -12,10 +12,10 @@ import { colors } from '../theme/colors';
 
 const Tab = createBottomTabNavigator();
 
-const TAB_BG = '#fdfaf4';
-const TAB_BORDER = '#e2d9c8';
-const TAB_ACTIVE = '#1c1811';
-const TAB_INACTIVE = '#8c7f6e';
+const TAB_BG = '#1a1a1a';
+const TAB_BORDER = '#333333';
+const TAB_ACTIVE = '#e05c2a';
+const TAB_INACTIVE = '#8c8c8c';
 
 const ICONS = {
   Inicio: 'home-outline',

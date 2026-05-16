@@ -43,6 +43,12 @@ function fmtDateBR(d) {
   return `${dd}/${mm}/${yyyy}`;
 }
 
+function fmtDDMM(d) {
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  return `${dd}/${mm}`;
+}
+
 export default function InicioScreen() {
   const navigation = useNavigation();
 
@@ -352,20 +358,22 @@ export default function InicioScreen() {
         {/* Ações rápidas */}
         <View style={styles.acoesCard}>
           <Text style={styles.acoesTitle}>🔴 Ações rápidas</Text>
-          <TouchableOpacity
-            style={styles.acaoPrimary}
-            onPress={() => navigation.navigate('Lancamento')}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.acaoPrimaryText}>+ Lançar sobra</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.acaoSecondary}
-            onPress={() => navigation.navigate('Painel')}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.acaoSecondaryText}>Ver análises</Text>
-          </TouchableOpacity>
+          <View style={styles.acoesRow}>
+            <TouchableOpacity
+              style={styles.acaoPrimary}
+              onPress={() => navigation.navigate('Lancamento')}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.acaoPrimaryText}>+ Lançar sobra</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.acaoSecondary}
+              onPress={() => navigation.navigate('Painel')}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.acaoSecondaryText}>Ver análises</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Stats do dia */}
@@ -393,19 +401,30 @@ export default function InicioScreen() {
 
         {/* Lançamentos */}
         <View style={styles.lancHeaderRow}>
-          <Text style={styles.lancHeaderTitle}>
-            🔴 Lançamentos{' '}
-            <Text style={styles.lancHeaderSub}>
-              {isHoje ? 'hoje' : fmtDateBR(selectedDate)}
-            </Text>
-          </Text>
-          <TouchableOpacity
-            onPress={() => setShowDatePicker(true)}
-            hitSlop={10}
-            style={styles.lupaBtn}
-          >
-            <Ionicons name="search" size={18} color={colors.text} />
-          </TouchableOpacity>
+          <Text style={styles.lancHeaderTitle}>🔴 Lançamentos</Text>
+          <View style={styles.lancHeaderActions}>
+            {!isHoje ? (
+              <>
+                <Text style={styles.lancHeaderDateLabel}>
+                  {fmtDDMM(selectedDate)}
+                </Text>
+                <TouchableOpacity
+                  style={styles.hojePillBtn}
+                  onPress={goHoje}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.hojePillText}>Hoje</Text>
+                </TouchableOpacity>
+              </>
+            ) : null}
+            <TouchableOpacity
+              onPress={() => setShowDatePicker(true)}
+              hitSlop={10}
+              style={styles.lupaIconBtn}
+            >
+              <Ionicons name="search" size={18} color={colors.muted} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {loadingLancs ? (
@@ -712,33 +731,43 @@ const styles = StyleSheet.create({
   },
 
   acoesCard: {
-    backgroundColor: ACOES_BG,
+    backgroundColor: '#2a2a2a',
+    borderWidth: 1,
+    borderColor: '#333333',
     borderRadius: 14,
     padding: 18,
     marginBottom: 18,
   },
   acoesTitle: {
-    color: ACOES_TEXT,
+    color: '#fdfaf4',
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 12,
   },
+  acoesRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
   acaoPrimary: {
+    flex: 1,
     backgroundColor: colors.accent,
     paddingVertical: 13,
     borderRadius: 10,
     alignItems: 'center',
-    marginBottom: 10,
+    justifyContent: 'center',
   },
   acaoPrimaryText: { color: '#fdfaf4', fontSize: 15, fontWeight: '700' },
   acaoSecondary: {
-    borderColor: ACOES_TEXT,
+    flex: 1,
+    borderColor: '#333333',
     borderWidth: 1,
+    backgroundColor: 'transparent',
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  acaoSecondaryText: { color: ACOES_TEXT, fontSize: 15, fontWeight: '600' },
+  acaoSecondaryText: { color: '#fdfaf4', fontSize: 15, fontWeight: '600' },
 
   statsRow: {
     flexDirection: 'row',
@@ -798,6 +827,32 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   lancHeaderSub: { color: colors.muted, fontWeight: '600' },
+  lancHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  lancHeaderDateLabel: {
+    color: '#8c8c8c',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  hojePillBtn: {
+    borderWidth: 1,
+    borderColor: '#e05c2a',
+    borderRadius: 20,
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    backgroundColor: 'transparent',
+  },
+  hojePillText: {
+    color: '#e05c2a',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  lupaIconBtn: {
+    padding: 4,
+  },
   lupaBtn: {
     padding: 8,
     borderRadius: 8,

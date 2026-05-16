@@ -34,9 +34,8 @@ function getDisplayName(m) {
   return prefix || 'Sem nome';
 }
 
-function papelLabel(p) {
-  if (p === 'admin') return '👑 Admin';
-  return '🔧 Operador';
+function papelEmoji(p) {
+  return p === 'admin' ? '👑' : '🔧';
 }
 
 export default function EquipeScreen() {
@@ -55,6 +54,7 @@ export default function EquipeScreen() {
 
   const [inviteEmail, setInviteEmail] = useState('');
   const [invitePapel, setInvitePapel] = useState('operador');
+  const [papelPickerOpen, setPapelPickerOpen] = useState(false);
   const [inviting, setInviting] = useState(false);
 
   const [editMembro, setEditMembro] = useState(null);
@@ -218,7 +218,6 @@ export default function EquipeScreen() {
     }
     setInviting(true);
 
-    // 1. Buscar a pessoa em qualquer outra empresa pra confirmar que tem conta
     const { data: foundList, error: findErr } = await supabase
       .from('membros')
       .select('user_id, nome, email')
@@ -237,7 +236,6 @@ export default function EquipeScreen() {
     }
     const found = foundList[0];
 
-    // 2. Já é membro desta empresa?
     const { data: existsList, error: existsErr } = await supabase
       .from('membros')
       .select('id')
@@ -255,7 +253,6 @@ export default function EquipeScreen() {
       return;
     }
 
-    // 3. Insert
     const { error: insErr } = await supabase.from('membros').insert({
       empresa_id: empresaId,
       user_id: found.user_id,
@@ -345,12 +342,14 @@ export default function EquipeScreen() {
     return (
       <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
         <AppHeader />
-        <View style={styles.container}>
+        <View style={{ padding: 20 }}>
           <Text style={styles.error}>{bootError}</Text>
         </View>
       </SafeAreaView>
     );
   }
+
+  const papelAtualObj = PAPEIS.find((p) => p.id === invitePapel) || PAPEIS[0];
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
@@ -363,14 +362,18 @@ export default function EquipeScreen() {
           contentContainerStyle={styles.container}
           keyboardShouldPersistTaps="handled"
         >
-          <Text style={styles.screenTitle}>Equipe</Text>
-          <Text style={styles.screenSubtitle}>
-            {empresa?.nome || 'Sua empresa'}
-          </Text>
+          {/* Header compacto da tela */}
+          <View style={styles.screenHeader}>
+            <Text style={styles.screenHeaderText}>👥 Equipe e permissões</Text>
+          </View>
 
+          {/* Card Nome da Empresa */}
           {isAdmin ? (
             <View style={styles.card}>
-              <Text style={styles.sectionTitle}>Nome da empresa</Text>
+              <View style={styles.cardHeader}>
+                <Text style={styles.cardHeaderEmoji}>🏪</Text>
+                <Text style={styles.cardHeaderTitle}>Nome da Empresa</Text>
+              </View>
               <TextInput
                 style={styles.input}
                 value={nomeEmpresaInput}
@@ -380,23 +383,90 @@ export default function EquipeScreen() {
                 editable={!savingEmpresa}
               />
               <TouchableOpacity
-                style={[styles.primaryBtn, savingEmpresa && styles.btnDisabled]}
+                style={[styles.primaryBtn, savingEmpresa && styles.disabled]}
                 onPress={handleSaveEmpresaNome}
                 disabled={savingEmpresa}
+                activeOpacity={0.85}
               >
                 {savingEmpresa ? (
-                  <ActivityIndicator color={colors.surface} />
+                  <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.primaryBtnText}>Salvar</Text>
+                  <Text style={styles.primaryBtnText}>Salvar nome</Text>
                 )}
               </TouchableOpacity>
             </View>
           ) : null}
 
+          {/* Card Minha Equipe */}
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <Text style={styles.cardHeaderEmoji}>👥</Text>
+              <Text style={styles.cardHeaderTitle}>Minha Equipe</Text>
+            </View>
+
+            {membros.length === 0 ? (
+              <Text style={styles.empty}>Nenhum membro encontrado.</Text>
+            ) : (
+              membros.map((m, idx) => {
+                const isSelf = m.user_id === userId;
+                const last = idx === membros.length - 1;
+                return (
+                  <View
+                    key={m.id}
+                    style={[styles.membroRow, last && styles.membroRowLast]}
+                  >
+                    <View style={styles.membroInfo}>
+                      <View style={styles.membroNomeRow}>
+                        <Text style={styles.membroNome}>{getDisplayName(m)}</Text>
+                        {isSelf ? (
+                          <Text style={styles.youBadge}> (você)</Text>
+                        ) : null}
+                      </View>
+                      <Text style={styles.membroMeta}>
+                        {m.email} · {papelEmoji(m.papel)} · {m.papel || 'operador'}
+                      </Text>
+                    </View>
+
+                    {isAdmin ? (
+                      <View style={styles.membroActions}>
+                        <TouchableOpacity
+                          style={styles.editBtn}
+                          onPress={() => openEditMembro(m)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.editBtnText}>✏️ Nome</Text>
+                        </TouchableOpacity>
+                        {!isSelf ? (
+                          <TouchableOpacity
+                            style={styles.removeBtn}
+                            onPress={() => handleRemove(m)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.removeBtnText}>Remover</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              })
+            )}
+          </View>
+
+          {/* Card Adicionar Membro */}
           {isAdmin ? (
             <View style={styles.card}>
-              <Text style={styles.sectionTitle}>Convidar membro</Text>
-              <Text style={styles.label}>E-mail</Text>
+              <View style={styles.cardHeader}>
+                <Text style={styles.cardHeaderEmoji}>✉️</Text>
+                <Text style={styles.cardHeaderTitle}>Adicionar Membro</Text>
+              </View>
+
+              <Text style={styles.helperText}>
+                O funcionário deve criar uma conta no app com este e-mail. Após o cadastro,
+                ele será vinculado à sua empresa.
+              </Text>
+
+              <Text style={styles.label}>E-MAIL</Text>
               <TextInput
                 style={styles.input}
                 value={inviteEmail}
@@ -408,86 +478,81 @@ export default function EquipeScreen() {
                 keyboardType="email-address"
                 editable={!inviting}
               />
-              <Text style={styles.label}>Papel</Text>
-              <View style={styles.pillsRow}>
-                {PAPEIS.map((p) => {
-                  const active = p.id === invitePapel;
-                  return (
-                    <TouchableOpacity
-                      key={p.id}
-                      style={[styles.pill, active && styles.pillActive]}
-                      onPress={() => setInvitePapel(p.id)}
-                      disabled={inviting}
-                    >
-                      <Text style={[styles.pillText, active && styles.pillTextActive]}>
-                        {p.emoji} {p.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+
+              <Text style={styles.label}>PAPEL</Text>
               <TouchableOpacity
-                style={[styles.primaryBtn, inviting && styles.btnDisabled]}
+                style={[styles.input, styles.pickerInput]}
+                onPress={() => setPapelPickerOpen(true)}
+                disabled={inviting}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.pickerValue}>
+                  {papelAtualObj.emoji} {papelAtualObj.label}
+                </Text>
+                <Ionicons name="chevron-down" size={16} color={colors.muted} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.primaryBtn, inviting && styles.disabled]}
                 onPress={handleInvite}
                 disabled={inviting}
+                activeOpacity={0.85}
               >
                 {inviting ? (
-                  <ActivityIndicator color={colors.surface} />
+                  <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.primaryBtnText}>Adicionar membro</Text>
+                  <Text style={styles.primaryBtnText}>✅ Adicionar à equipe</Text>
                 )}
               </TouchableOpacity>
             </View>
           ) : null}
-
-          <View style={styles.membrosHeader}>
-            <Text style={styles.sectionTitle}>
-              Membros{' '}
-              <Text style={styles.membrosCount}>({membros.length})</Text>
-            </Text>
-          </View>
-
-          {membros.length === 0 ? (
-            <Text style={styles.empty}>Nenhum membro encontrado.</Text>
-          ) : (
-            membros.map((m) => {
-              const isSelf = m.user_id === userId;
-              return (
-                <View key={m.id} style={styles.membroCard}>
-                  <View style={{ flex: 1 }}>
-                    <View style={styles.membroNomeRow}>
-                      <Text style={styles.membroNome}>{getDisplayName(m)}</Text>
-                      {isSelf ? <Text style={styles.youBadge}>(você)</Text> : null}
-                    </View>
-                    <Text style={styles.membroEmail}>{m.email}</Text>
-                    <Text style={styles.membroPapel}>{papelLabel(m.papel)}</Text>
-                  </View>
-                  {isAdmin ? (
-                    <View style={styles.membroActions}>
-                      <TouchableOpacity
-                        style={styles.iconBtn}
-                        onPress={() => openEditMembro(m)}
-                        hitSlop={8}
-                      >
-                        <Ionicons name="create-outline" size={20} color={colors.accent} />
-                      </TouchableOpacity>
-                      {!isSelf ? (
-                        <TouchableOpacity
-                          style={styles.removeBtn}
-                          onPress={() => handleRemove(m)}
-                        >
-                          <Text style={styles.removeBtnText}>Remover</Text>
-                        </TouchableOpacity>
-                      ) : null}
-                    </View>
-                  ) : null}
-                </View>
-              );
-            })
-          )}
         </ScrollView>
       </KeyboardAvoidingView>
 
+      {/* Picker de papel */}
+      <Modal
+        visible={papelPickerOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPapelPickerOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.pickerBackdrop}
+          activeOpacity={1}
+          onPress={() => setPapelPickerOpen(false)}
+        >
+          <View style={styles.pickerCard}>
+            <Text style={styles.pickerTitle}>Selecionar papel</Text>
+            {PAPEIS.map((p) => {
+              const active = p.id === invitePapel;
+              return (
+                <TouchableOpacity
+                  key={p.id}
+                  style={[styles.pickerOption, active && styles.pickerOptionActive]}
+                  onPress={() => {
+                    setInvitePapel(p.id);
+                    setPapelPickerOpen(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.pickerOptionText,
+                      active && styles.pickerOptionTextActive,
+                    ]}
+                  >
+                    {p.emoji} {p.label}
+                  </Text>
+                  {active ? (
+                    <Ionicons name="checkmark" size={18} color={colors.accent} />
+                  ) : null}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Modal de edição de nome */}
       <Modal
         visible={!!editMembro}
         transparent
@@ -509,7 +574,7 @@ export default function EquipeScreen() {
               {editMembro ? (
                 <>
                   <Text style={styles.modalEmail}>{editMembro.email}</Text>
-                  <Text style={styles.label}>Nome de exibição</Text>
+                  <Text style={styles.label}>NOME DE EXIBIÇÃO</Text>
                   <TextInput
                     style={styles.input}
                     value={editMembroNome}
@@ -520,19 +585,19 @@ export default function EquipeScreen() {
                   />
                   <View style={styles.modalActions}>
                     <TouchableOpacity
-                      style={[styles.modalCancelBtn, editMembroSaving && styles.btnDisabled]}
+                      style={[styles.modalCancelBtn, editMembroSaving && styles.disabled]}
                       onPress={closeEditMembro}
                       disabled={editMembroSaving}
                     >
                       <Text style={styles.modalCancelText}>Cancelar</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[styles.modalSaveBtn, editMembroSaving && styles.btnDisabled]}
+                      style={[styles.modalSaveBtn, editMembroSaving && styles.disabled]}
                       onPress={handleSaveMembroNome}
                       disabled={editMembroSaving}
                     >
                       {editMembroSaving ? (
-                        <ActivityIndicator color={colors.surface} />
+                        <ActivityIndicator color="#fff" />
                       ) : (
                         <Text style={styles.modalSaveText}>Salvar</Text>
                       )}
@@ -572,132 +637,233 @@ export default function EquipeScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  container: { padding: 20, paddingBottom: 60 },
+  container: { paddingBottom: 40 },
 
-  screenTitle: {
-    color: colors.text,
-    fontSize: 28,
-    fontWeight: '700',
-    fontFamily: SERIF,
+  // Header compacto
+  screenHeader: {
+    padding: 20,
   },
-  screenSubtitle: {
-    color: colors.muted,
-    fontSize: 14,
-    marginTop: 4,
-    marginBottom: 20,
-  },
-
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 16,
-    marginBottom: 16,
-  },
-  sectionTitle: {
+  screenHeaderText: {
     color: colors.text,
     fontSize: 16,
     fontWeight: '700',
-    fontFamily: SERIF,
+  },
+
+  // Cards
+  card: {
+    backgroundColor: '#2a2a2a',
+    borderWidth: 1,
+    borderColor: '#333333',
+    borderRadius: 14,
+    padding: 16,
+    marginHorizontal: 16,
     marginBottom: 12,
   },
-  label: {
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  cardHeaderEmoji: {
+    fontSize: 18,
+    marginRight: 8,
+  },
+  cardHeaderTitle: {
     color: colors.text,
-    fontSize: 13,
+    fontSize: 18,
+    fontWeight: '700',
+    fontFamily: SERIF,
+  },
+
+  // Inputs / labels
+  label: {
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    color: colors.muted,
     marginTop: 12,
-    marginBottom: 6,
-    opacity: 0.85,
+    marginBottom: 5,
   },
   input: {
-    backgroundColor: colors.bg,
-    color: colors.text,
-    borderRadius: 8,
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1.5,
+    borderColor: '#333333',
+    borderRadius: 10,
     paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
+    paddingVertical: 11,
+    fontSize: 15,
+    color: colors.text,
+  },
+  pickerInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  pickerValue: {
+    color: colors.text,
+    fontSize: 15,
+  },
+  helperText: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 12,
   },
 
-  pillsRow: { flexDirection: 'row', flexWrap: 'wrap' },
-  pill: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.bg,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  pillActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  pillText: { color: colors.text, fontSize: 14, fontWeight: '600' },
-  pillTextActive: { color: colors.surface },
-
+  // Primary button
   primaryBtn: {
     backgroundColor: colors.accent,
     paddingVertical: 14,
-    borderRadius: 10,
+    borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
     marginTop: 16,
   },
   primaryBtnText: {
-    color: colors.surface,
+    color: '#fff',
     fontSize: 15,
     fontWeight: '700',
+    letterSpacing: 0.3,
   },
-  btnDisabled: { opacity: 0.6 },
+  disabled: { opacity: 0.6 },
 
-  membrosHeader: { marginTop: 8, marginBottom: 12 },
-  membrosCount: { color: colors.muted, fontWeight: '600' },
-
-  empty: { color: colors.muted, textAlign: 'center', marginTop: 20 },
-
-  membroCard: {
+  // Membros
+  membroRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 14,
-    marginBottom: 10,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333333',
   },
-  membroNomeRow: { flexDirection: 'row', alignItems: 'center' },
-  membroNome: { color: colors.text, fontSize: 15, fontWeight: '700' },
-  youBadge: {
-    color: colors.gold,
-    fontSize: 12,
-    marginLeft: 6,
+  membroRowLast: {
+    borderBottomWidth: 0,
+  },
+  membroInfo: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  membroNomeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  membroNome: {
+    color: colors.text,
+    fontSize: 14,
     fontWeight: '700',
   },
-  membroEmail: { color: colors.muted, fontSize: 13, marginTop: 2 },
-  membroPapel: { color: colors.text, fontSize: 13, marginTop: 4 },
-
-  membroActions: { flexDirection: 'row', alignItems: 'center' },
-  iconBtn: { padding: 6, marginRight: 6 },
-
-  removeBtn: {
-    paddingVertical: 6,
+  youBadge: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  membroMeta: {
+    color: colors.muted,
+    fontSize: 12,
+    marginTop: 3,
+  },
+  membroActions: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  editBtn: {
+    borderWidth: 1,
+    borderColor: '#333333',
+    borderRadius: 8,
+    paddingVertical: 5,
     paddingHorizontal: 10,
-    borderRadius: 6,
+  },
+  editBtnText: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  removeBtn: {
     borderWidth: 1,
     borderColor: colors.accent,
+    borderRadius: 8,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
   },
-  removeBtnText: { color: colors.accent, fontWeight: '700', fontSize: 12 },
+  removeBtnText: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '600',
+  },
 
+  empty: {
+    color: colors.muted,
+    textAlign: 'center',
+    paddingVertical: 14,
+    fontSize: 13,
+  },
+  error: {
+    color: colors.danger,
+    textAlign: 'center',
+    marginTop: 24,
+  },
+
+  // Picker modal
+  pickerBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  pickerCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#2a2a2a',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#333333',
+    padding: 16,
+  },
+  pickerTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  pickerOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: '#333333',
+    marginBottom: 6,
+  },
+  pickerOptionActive: {
+    borderColor: colors.accent,
+  },
+  pickerOptionText: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  pickerOptionTextActive: {
+    color: colors.accent,
+  },
+
+  // Modal de edição de nome
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
   },
   modalCard: {
-    backgroundColor: colors.bg,
+    backgroundColor: '#2a2a2a',
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     padding: 20,
     maxHeight: '90%',
+    borderTopWidth: 1,
+    borderTopColor: '#333333',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -707,40 +873,49 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     color: colors.text,
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
     fontFamily: SERIF,
   },
-  modalEmail: { color: colors.muted, fontSize: 13, marginBottom: 4 },
+  modalEmail: {
+    color: colors.muted,
+    fontSize: 13,
+    marginBottom: 4,
+  },
   modalActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     marginTop: 20,
   },
   modalCancelBtn: {
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 18,
-    borderRadius: 8,
-    backgroundColor: colors.surface,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: '#333333',
+    backgroundColor: 'transparent',
     marginRight: 10,
     minWidth: 100,
     alignItems: 'center',
   },
-  modalCancelText: { color: colors.text, fontWeight: '600' },
+  modalCancelText: {
+    color: colors.text,
+    fontWeight: '600',
+  },
   modalSaveBtn: {
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 18,
-    borderRadius: 8,
+    borderRadius: 10,
     backgroundColor: colors.accent,
     minWidth: 100,
     alignItems: 'center',
   },
-  modalSaveText: { color: colors.surface, fontWeight: '700' },
+  modalSaveText: {
+    color: '#fff',
+    fontWeight: '700',
+  },
 
-  error: { color: colors.danger, textAlign: 'center', marginTop: 24 },
-
+  // Toast
   toast: {
     position: 'absolute',
     top: Platform.OS === 'ios' ? 60 : 30,
@@ -757,7 +932,7 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   toastText: {
-    color: colors.surface,
+    color: '#2a2a2a',
     fontSize: 14,
     fontWeight: '600',
     textAlign: 'center',

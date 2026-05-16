@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
+  TextInput,
   StyleSheet,
   Platform,
   ScrollView,
@@ -9,8 +10,12 @@ import {
   TouchableOpacity,
   ToastAndroid,
   Alert,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as Print from 'expo-print';
@@ -20,83 +25,18 @@ import AppHeader from '../components/AppHeader';
 
 const SERIF = Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' });
 
-const DESTINO_BLUE = colors.blue;
-
 const DESTINOS = [
   { id: 'Lixo', emoji: '🗑️', color: colors.accent },
   { id: 'Doação', emoji: '💚', color: colors.green },
   { id: 'Transformação', emoji: '♻️', color: colors.gold },
-  { id: 'Venda Resgatada', emoji: '💰', color: DESTINO_BLUE },
+  { id: 'Venda Resgatada', emoji: '💰', color: colors.blue },
 ];
 
-const FILTERS = [
-  { id: 'hoje', label: 'Hoje' },
-  { id: 'semana', label: 'Semana' },
-  { id: 'mes', label: 'Mês' },
-];
-
-function getRange(filter) {
-  const now = new Date();
-  let inicio;
-  let fim;
-  if (filter === 'hoje') {
-    inicio = new Date(now);
-    inicio.setHours(0, 0, 0, 0);
-    fim = new Date(now);
-    fim.setHours(23, 59, 59, 999);
-  } else if (filter === 'semana') {
-    const day = now.getDay();
-    const diffToMonday = day === 0 ? -6 : 1 - day;
-    inicio = new Date(now);
-    inicio.setDate(now.getDate() + diffToMonday);
-    inicio.setHours(0, 0, 0, 0);
-    fim = new Date(inicio);
-    fim.setDate(inicio.getDate() + 6);
-    fim.setHours(23, 59, 59, 999);
-  } else {
-    inicio = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-    fim = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-  }
-  return { inicio, fim };
-}
-
-function getPreviousRange(filter, currentInicio) {
-  if (filter === 'hoje') {
-    const inicio = new Date(currentInicio);
-    inicio.setDate(inicio.getDate() - 1);
-    const fim = new Date(inicio);
-    fim.setHours(23, 59, 59, 999);
-    return { inicio, fim };
-  }
-  if (filter === 'semana') {
-    const inicio = new Date(currentInicio);
-    inicio.setDate(inicio.getDate() - 7);
-    const fim = new Date(inicio);
-    fim.setDate(inicio.getDate() + 6);
-    fim.setHours(23, 59, 59, 999);
-    return { inicio, fim };
-  }
-  const inicio = new Date(currentInicio.getFullYear(), currentInicio.getMonth() - 1, 1, 0, 0, 0, 0);
-  const fim = new Date(currentInicio.getFullYear(), currentInicio.getMonth(), 0, 23, 59, 59, 999);
-  return { inicio, fim };
-}
+const DESTINO_OPTIONS = ['Todos', ...DESTINOS.map((d) => d.id)];
 
 function formatBRL(value) {
   const n = typeof value === 'number' ? value : parseFloat(value) || 0;
   return `R$ ${n.toFixed(2).replace('.', ',')}`;
-}
-
-function formatDateLong(d) {
-  try {
-    return d.toLocaleDateString('pt-BR', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    });
-  } catch {
-    return '';
-  }
 }
 
 function formatDateTime(iso) {
@@ -177,11 +117,35 @@ function htmlEscape(value) {
     .replace(/'/g, '&#39;');
 }
 
+function startOfWeek(d) {
+  const date = new Date(d);
+  const day = date.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  date.setDate(date.getDate() + diff);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function endOfWeek(d) {
+  const date = startOfWeek(d);
+  date.setDate(date.getDate() + 6);
+  date.setHours(23, 59, 59, 999);
+  return date;
+}
+
 export default function PainelScreen() {
   const [empresaId, setEmpresaId] = useState(null);
   const [loadingMembro, setLoadingMembro] = useState(true);
 
-  const [filter, setFilter] = useState('hoje');
+  const [dataInicio, setDataInicio] = useState(() => startOfWeek(new Date()));
+  const [dataFim, setDataFim] = useState(() => endOfWeek(new Date()));
+  const [showPickerInicio, setShowPickerInicio] = useState(false);
+  const [showPickerFim, setShowPickerFim] = useState(false);
+
+  const [searchProduto, setSearchProduto] = useState('');
+  const [filtroDestino, setFiltroDestino] = useState('Todos');
+  const [destinoPickerOpen, setDestinoPickerOpen] = useState(false);
+
   const [lancamentos, setLancamentos] = useState([]);
   const [anteriores, setAnteriores] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -192,9 +156,7 @@ export default function PainelScreen() {
 
   const [detalheExpanded, setDetalheExpanded] = useState(false);
   const [detalheVerTodos, setDetalheVerTodos] = useState(false);
-  const [resgatadasExpanded, setResgatadasExpanded] = useState(false);
-
-  const hoje = useMemo(() => new Date(), []);
+  const [lancamentosExpanded, setLancamentosExpanded] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -216,7 +178,6 @@ export default function PainelScreen() {
           .maybeSingle();
         if (!mounted) return;
         if (membroErr) {
-          console.error('[Painel] membros error:', membroErr);
           setErrorMsg(membroErr.message);
           setLoadingMembro(false);
           return;
@@ -226,12 +187,10 @@ export default function PainelScreen() {
           setLoadingMembro(false);
           return;
         }
-        console.log('[Painel] empresaId:', membro.empresa_id);
         setEmpresaId(membro.empresa_id);
         setLoadingMembro(false);
       } catch (err) {
         if (!mounted) return;
-        console.error('[Painel] membro threw:', err);
         setErrorMsg(err?.message || 'Erro inesperado.');
         setLoadingMembro(false);
       }
@@ -241,91 +200,111 @@ export default function PainelScreen() {
     };
   }, []);
 
+  const carregarPainel = async () => {
+    if (!empresaId) return;
+    setLoading(true);
+    setErrorMsg('');
+    try {
+      const inicio = new Date(dataInicio);
+      inicio.setHours(0, 0, 0, 0);
+      const fim = new Date(dataFim);
+      fim.setHours(23, 59, 59, 999);
+      const inicioISO = inicio.toISOString();
+      const fimISO = fim.toISOString();
+
+      const { data, error } = await supabase
+        .from('lancamentos_sobras')
+        .select('*, produtos(custo_estimado)')
+        .eq('empresa_id', empresaId)
+        .gte('data', inicioISO)
+        .lte('data', fimISO)
+        .order('data', { ascending: false });
+
+      if (error) {
+        setErrorMsg(error.message);
+        setLancamentos([]);
+      } else {
+        setLancamentos(data || []);
+      }
+
+      // período anterior (mesmo tamanho)
+      const diffMs = fim.getTime() - inicio.getTime();
+      const prevFim = new Date(inicio.getTime() - 1);
+      const prevInicio = new Date(prevFim.getTime() - diffMs);
+      const { data: prevData } = await supabase
+        .from('lancamentos_sobras')
+        .select('*, produtos(custo_estimado)')
+        .eq('empresa_id', empresaId)
+        .gte('data', prevInicio.toISOString())
+        .lte('data', prevFim.toISOString());
+      setAnteriores(prevData || []);
+    } catch (err) {
+      setErrorMsg(err?.message || 'Erro ao carregar dados.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!empresaId) return;
-    let mounted = true;
-    (async () => {
-      setLoading(true);
-      setErrorMsg('');
-      try {
-        const { inicio, fim } = getRange(filter);
-        const inicioISO = inicio.toISOString();
-        const fimISO = fim.toISOString();
-        console.log('[Painel] período:', inicioISO, 'até', fimISO);
+    carregarPainel();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empresaId]);
 
-        const { data, error } = await supabase
-          .from('lancamentos_sobras')
-          .select('*, produtos(custo_estimado)')
-          .eq('empresa_id', empresaId)
-          .gte('data', inicioISO)
-          .lte('data', fimISO)
-          .order('data', { ascending: false });
-
-        console.log('[Painel] lancamentos:', data?.length, 'error:', error?.message);
-        console.log('[Painel] primeiro item:', JSON.stringify(data?.[0]));
-
-        if (!mounted) return;
-        if (error) {
-          setErrorMsg(error.message);
-          setLancamentos([]);
-        } else {
-          setLancamentos(data || []);
-        }
-
-        const prev = getPreviousRange(filter, inicio);
-        const { data: prevData } = await supabase
-          .from('lancamentos_sobras')
-          .select('*, produtos(custo_estimado)')
-          .eq('empresa_id', empresaId)
-          .gte('data', prev.inicio.toISOString())
-          .lte('data', prev.fim.toISOString());
-        if (!mounted) return;
-        setAnteriores(prevData || []);
-      } catch (err) {
-        if (!mounted) return;
-        console.error('[Painel] query threw:', err);
-        setErrorMsg(err?.message || 'Erro ao carregar dados.');
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [empresaId, filter]);
+  // Filtros em tempo real (produto + destino)
+  const lancamentosFiltrados = useMemo(() => {
+    const q = searchProduto.trim().toLowerCase();
+    return lancamentos.filter((l) => {
+      if (filtroDestino !== 'Todos' && l.destino !== filtroDestino) return false;
+      if (q && !(l.produto_nome || '').toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [lancamentos, searchProduto, filtroDestino]);
 
   const totals = useMemo(() => {
-    const total = lancamentos.length;
-    const prejuizo = calcPrejuizo(lancamentos);
-    const recuperado = lancamentos.reduce((acc, l) => {
+    const total = lancamentosFiltrados.length;
+    const prejuizo = calcPrejuizo(lancamentosFiltrados);
+    const recuperado = lancamentosFiltrados.reduce((acc, l) => {
       if (l.destino !== 'Venda Resgatada') return acc;
       return acc + (parseFloat(l.valor_recebido) || 0);
     }, 0);
-    const produtosDistintos = new Set(
-      lancamentos.map((l) => l.produto_id).filter(Boolean)
-    ).size;
-    return { total, prejuizo, recuperado, produtosDistintos };
-  }, [lancamentos]);
+    return { total, prejuizo, recuperado };
+  }, [lancamentosFiltrados]);
 
-  const breakdown = useMemo(() => {
-    const counts = {};
-    DESTINOS.forEach((d) => {
-      counts[d.id] = 0;
+  const totaisPorUnidade = useMemo(() => {
+    const acc = {};
+    lancamentosFiltrados.forEach((l) => {
+      if (l.destino === 'Venda Resgatada') return;
+      const u = l.unidade || '-';
+      const q = parseFloat(l.quantidade) || 0;
+      acc[u] = (acc[u] || 0) + q;
     });
-    lancamentos.forEach((l) => {
-      if (counts[l.destino] != null) counts[l.destino] += 1;
+    return Object.entries(acc)
+      .map(([unidade, quantidade]) => ({ unidade, quantidade }))
+      .sort((a, b) => b.quantidade - a.quantidade);
+  }, [lancamentosFiltrados]);
+
+  const destinosResumo = useMemo(() => {
+    const acc = {};
+    lancamentosFiltrados.forEach((l) => {
+      if (!acc[l.destino]) acc[l.destino] = { count: 0, porUnidade: {} };
+      acc[l.destino].count += 1;
+      const u = l.unidade || '-';
+      const q = parseFloat(l.quantidade) || 0;
+      acc[l.destino].porUnidade[u] = (acc[l.destino].porUnidade[u] || 0) + q;
     });
-    const total = lancamentos.length || 1;
-    return DESTINOS.map((d) => ({
+    const total = lancamentosFiltrados.length || 1;
+    return DESTINOS.filter((d) => acc[d.id]?.count > 0).map((d) => ({
       ...d,
-      count: counts[d.id],
-      pct: Math.round((counts[d.id] / total) * 100),
+      count: acc[d.id].count,
+      porUnidade: acc[d.id].porUnidade,
+      pct: Math.round((acc[d.id].count / total) * 100),
     }));
-  }, [lancamentos]);
+  }, [lancamentosFiltrados]);
 
   const ranking = useMemo(() => {
     const grupos = {};
-    lancamentos.forEach((l) => {
+    lancamentosFiltrados.forEach((l) => {
       const key = l.produto_id || l.produto_nome;
       if (!grupos[key]) {
         grupos[key] = {
@@ -349,13 +328,13 @@ export default function PainelScreen() {
     return Object.values(grupos)
       .sort((a, b) => b.prejuizo - a.prejuizo)
       .slice(0, 5);
-  }, [lancamentos]);
+  }, [lancamentosFiltrados]);
 
   const insights = useMemo(() => {
-    if (lancamentos.length === 0) return null;
+    if (lancamentosFiltrados.length === 0) return null;
 
     const destinoCounts = {};
-    lancamentos.forEach((l) => {
+    lancamentosFiltrados.forEach((l) => {
       destinoCounts[l.destino] = (destinoCounts[l.destino] || 0) + 1;
     });
     let destinoMaisFrequente = null;
@@ -373,42 +352,34 @@ export default function PainelScreen() {
     const diffCountPct =
       totalAnterior === 0
         ? null
-        : Math.round(((lancamentos.length - totalAnterior) / totalAnterior) * 100);
+        : Math.round(((lancamentosFiltrados.length - totalAnterior) / totalAnterior) * 100);
     const diffPrejuizoPct =
       prejuizoAnterior === 0
         ? null
         : Math.round(((totals.prejuizo - prejuizoAnterior) / prejuizoAnterior) * 100);
 
-    return { destinoMaisFrequente, diffCountPct, diffPrejuizoPct };
-  }, [lancamentos, anteriores, totals.prejuizo]);
-
-  const alertasPerda = useMemo(() => {
-    const grupos = {};
-    lancamentos.forEach((l) => {
-      const key = l.produto_id || l.produto_nome;
-      if (!key) return;
-      if (!grupos[key]) {
-        grupos[key] = { nome: l.produto_nome, total: 0, perdas: 0 };
-      }
-      grupos[key].total += 1;
-      if (
-        l.destino === 'Lixo' ||
-        l.destino === 'Doação' ||
-        l.destino === 'Transformação'
-      ) {
-        grupos[key].perdas += 1;
+    // produto mais perdido
+    const perdidos = {};
+    lancamentosFiltrados.forEach((l) => {
+      if (l.destino === 'Venda Resgatada') return;
+      const k = l.produto_nome || '-';
+      perdidos[k] = (perdidos[k] || 0) + 1;
+    });
+    let produtoMaisPerdido = null;
+    let maxPerd = 0;
+    Object.entries(perdidos).forEach(([n, c]) => {
+      if (c > maxPerd) {
+        maxPerd = c;
+        produtoMaisPerdido = n;
       }
     });
-    return Object.values(grupos)
-      .filter((g) => g.total >= 2)
-      .map((g) => ({ ...g, pct: Math.round((g.perdas / g.total) * 100) }))
-      .filter((g) => g.pct > 20)
-      .sort((a, b) => b.pct - a.pct);
-  }, [lancamentos]);
+
+    return { destinoMaisFrequente, diffCountPct, diffPrejuizoPct, produtoMaisPerdido };
+  }, [lancamentosFiltrados, anteriores, totals.prejuizo]);
 
   const detalheProdutos = useMemo(() => {
     const grupos = {};
-    lancamentos.forEach((l) => {
+    lancamentosFiltrados.forEach((l) => {
       if (l.destino === 'Venda Resgatada') return;
       const key = l.produto_id || l.produto_nome;
       if (!key) return;
@@ -456,22 +427,20 @@ export default function PainelScreen() {
         if (!a.temCusto && b.temCusto) return 1;
         return b.prejuizo - a.prejuizo;
       });
-  }, [lancamentos]);
-
-  const detalheResgatadas = useMemo(
-    () => lancamentos.filter((l) => l.destino === 'Venda Resgatada'),
-    [lancamentos]
-  );
+  }, [lancamentosFiltrados]);
 
   const exportarCSV = async () => {
     if (exportingCSV || exportingPDF) return;
-    if (!lancamentos || lancamentos.length === 0) {
+    if (!lancamentosFiltrados || lancamentosFiltrados.length === 0) {
       showToast('Sem dados para exportar');
       return;
     }
     setExportingCSV(true);
     try {
-      const { inicio, fim } = getRange(filter);
+      const inicio = new Date(dataInicio);
+      inicio.setHours(0, 0, 0, 0);
+      const fim = new Date(dataFim);
+      fim.setHours(23, 59, 59, 999);
       const sep = ';';
       const header = [
         'Data',
@@ -486,7 +455,7 @@ export default function PainelScreen() {
       ];
 
       const grupos = new Map();
-      const ordenadosAsc = [...lancamentos].sort(
+      const ordenadosAsc = [...lancamentosFiltrados].sort(
         (a, b) => new Date(a.data) - new Date(b.data)
       );
       for (const l of ordenadosAsc) {
@@ -510,7 +479,8 @@ export default function PainelScreen() {
           const dataStr = fmtDateBR(d);
           const qtd = parseFloat(l.quantidade) || 0;
           const custo = parseFloat(l.produtos?.custo_estimado);
-          const prejuizo = !isNaN(custo) && l.destino !== 'Venda Resgatada' ? qtd * custo : 0;
+          const prejuizo =
+            !isNaN(custo) && l.destino !== 'Venda Resgatada' ? qtd * custo : 0;
           const row = [
             dataStr,
             l.produto_nome ?? '',
@@ -551,26 +521,29 @@ export default function PainelScreen() {
 
   const exportarPDF = async () => {
     if (exportingCSV || exportingPDF) return;
-    if (!lancamentos || lancamentos.length === 0) {
+    if (!lancamentosFiltrados || lancamentosFiltrados.length === 0) {
       showToast('Sem dados para exportar');
       return;
     }
     setExportingPDF(true);
     try {
-      const { inicio, fim } = getRange(filter);
+      const inicio = new Date(dataInicio);
+      inicio.setHours(0, 0, 0, 0);
+      const fim = new Date(dataFim);
+      fim.setHours(23, 59, 59, 999);
       const now = new Date();
 
-      const totalSobras = lancamentos.reduce((acc, l) => {
+      const totalSobras = lancamentosFiltrados.reduce((acc, l) => {
         if (l.destino === 'Venda Resgatada') return acc;
         return acc + (parseFloat(l.quantidade) || 0);
       }, 0);
-      const prejuizoEst = lancamentos.reduce((acc, l) => {
+      const prejuizoEst = lancamentosFiltrados.reduce((acc, l) => {
         if (l.destino === 'Venda Resgatada') return acc;
         const c = parseFloat(l.produtos?.custo_estimado) || 0;
         return acc + (parseFloat(l.quantidade) || 0) * c;
       }, 0);
-      const totalLancamentos = lancamentos.length;
-      const valorRecuperado = lancamentos.reduce((acc, l) => {
+      const totalLancamentos = lancamentosFiltrados.length;
+      const valorRecuperado = lancamentosFiltrados.reduce((acc, l) => {
         if (l.destino !== 'Venda Resgatada') return acc;
         return acc + (parseFloat(l.valor_recebido) || 0);
       }, 0);
@@ -585,14 +558,14 @@ export default function PainelScreen() {
       destinosCfg.forEach((d) => {
         destinoQtd[d.id] = 0;
       });
-      lancamentos.forEach((l) => {
+      lancamentosFiltrados.forEach((l) => {
         if (destinoQtd[l.destino] != null) {
           destinoQtd[l.destino] += parseFloat(l.quantidade) || 0;
         }
       });
 
       const perdasMap = new Map();
-      lancamentos.forEach((l) => {
+      lancamentosFiltrados.forEach((l) => {
         if (l.destino === 'Venda Resgatada') return;
         const key = l.produto_id || l.produto_nome;
         if (!perdasMap.has(key)) {
@@ -610,7 +583,7 @@ export default function PainelScreen() {
         g.prejuizo += qtd * c;
       });
       const perdas = Array.from(perdasMap.values()).sort((a, b) => b.prejuizo - a.prejuizo);
-      const resgatadas = lancamentos.filter((l) => l.destino === 'Venda Resgatada');
+      const resgatadas = lancamentosFiltrados.filter((l) => l.destino === 'Venda Resgatada');
 
       const resumoCardsHTML = `
         <div class="card">
@@ -857,10 +830,7 @@ export default function PainelScreen() {
 </body>
 </html>`;
 
-      const { uri } = await Print.printToFileAsync({
-        html,
-        base64: false,
-      });
+      const { uri } = await Print.printToFileAsync({ html, base64: false });
 
       const filename = `sobrou_${fmtDateISO(inicio)}_${fmtDateISO(fim)}.pdf`;
       const destPath = FileSystem.documentDirectory + filename;
@@ -885,6 +855,18 @@ export default function PainelScreen() {
     }
   };
 
+  const onChangeDate = (which, event, selectedDate) => {
+    if (Platform.OS === 'android') {
+      if (which === 'inicio') setShowPickerInicio(false);
+      else setShowPickerFim(false);
+      if (event?.type !== 'set' || !selectedDate) return;
+    }
+    if (selectedDate) {
+      if (which === 'inicio') setDataInicio(selectedDate);
+      else setDataFim(selectedDate);
+    }
+  };
+
   if (loadingMembro) {
     return (
       <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
@@ -897,362 +879,411 @@ export default function PainelScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <AppHeader />
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>Painel</Text>
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        {/* 1. Hero Banner */}
+        <LinearGradient
+          colors={['#1a1a1a', '#0a1a2a']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.hero}
+        >
+          <View style={styles.heroContent}>
+            <Text style={styles.heroEyebrow}>DECISÃO GERENCIAL</Text>
+            <Text style={styles.heroTitle}>Análises de perdas</Text>
+            <Text style={styles.heroSubtitle}>
+              Ranking, destinos, prejuízo estimado e decisões práticas por período.
+            </Text>
+          </View>
+          <View style={styles.biBadge}>
+            <Text style={styles.biBadgeText}>BI</Text>
+          </View>
+        </LinearGradient>
 
-        <View style={styles.filterRow}>
-          {FILTERS.map((f) => {
-            const active = filter === f.id;
-            return (
+        {/* 2. Card Filtros */}
+        <View style={styles.card}>
+          <View style={styles.row2}>
+            <View style={styles.col}>
+              <Text style={styles.label}>DE</Text>
               <TouchableOpacity
-                key={f.id}
-                style={[styles.filterBtn, active && styles.filterBtnActive]}
-                onPress={() => setFilter(f.id)}
+                style={[styles.input, styles.dateInput]}
+                onPress={() => setShowPickerInicio(true)}
+                activeOpacity={0.7}
               >
-                <Text style={[styles.filterText, active && styles.filterTextActive]}>
-                  {f.label}
-                </Text>
+                <Text style={styles.dateValue}>{fmtDateBR(dataInicio)}</Text>
+                <Text style={styles.dateIcon}>📅</Text>
               </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        <View style={styles.exportRow}>
-          <TouchableOpacity
-            style={[
-              styles.exportBtn,
-              (exportingCSV || exportingPDF) && styles.exportBtnDisabled,
-            ]}
-            onPress={exportarCSV}
-            disabled={exportingCSV || exportingPDF}
-            activeOpacity={0.7}
-          >
-            {exportingCSV ? (
-              <Text style={styles.exportBtnText}>Gerando...</Text>
-            ) : (
-              <Text style={styles.exportBtnText}>📄 Exportar CSV</Text>
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.exportBtn,
-              (exportingCSV || exportingPDF) && styles.exportBtnDisabled,
-            ]}
-            onPress={exportarPDF}
-            disabled={exportingCSV || exportingPDF}
-            activeOpacity={0.7}
-          >
-            {exportingPDF ? (
-              <Text style={styles.exportBtnText}>Gerando...</Text>
-            ) : (
-              <Text style={styles.exportBtnText}>📊 Exportar PDF</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-
-        {loading ? (
-          <ActivityIndicator color={colors.accent} style={{ marginTop: 40 }} />
-        ) : errorMsg ? (
-          <Text style={styles.error}>{errorMsg}</Text>
-        ) : (
-          <>
-            <View style={styles.statsGrid}>
-              <StatCard emoji="🗑️" label="Lançamentos" value={String(totals.total)} />
-              <StatCard
-                emoji="💸"
-                label="Prejuízo"
-                value={formatBRL(totals.prejuizo)}
-                valueColor={colors.accent}
-              />
-              <StatCard
-                emoji="💰"
-                label="Recuperado"
-                value={formatBRL(totals.recuperado)}
-                valueColor={colors.green}
-              />
-              <StatCard emoji="📦" label="Produtos" value={String(totals.produtosDistintos)} />
             </View>
+            <View style={styles.col}>
+              <Text style={styles.label}>ATÉ</Text>
+              <TouchableOpacity
+                style={[styles.input, styles.dateInput]}
+                onPress={() => setShowPickerFim(true)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.dateValue}>{fmtDateBR(dataFim)}</Text>
+                <Text style={styles.dateIcon}>📅</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
 
-            {alertasPerda.length > 0 ? (
-              <View style={styles.alertBanner}>
-                <View style={styles.alertHeader}>
-                  <Text style={styles.alertEmoji}>⚠️</Text>
-                  <Text style={styles.alertTitle}>
-                    Produtos com perda alta no período
-                  </Text>
-                </View>
-                {alertasPerda.map((a, idx) => (
-                  <Text key={(a.nome || '') + idx} style={styles.alertItem}>
-                    ⚠️ {a.nome} — {a.pct}% de perda
-                  </Text>
-                ))}
-              </View>
-            ) : null}
+          <View style={[styles.actionsRow, { marginTop: 12 }]}>
+            <TouchableOpacity
+              style={[styles.primaryBtn, { flex: 2 }, loading && styles.disabled]}
+              onPress={carregarPainel}
+              disabled={loading}
+              activeOpacity={0.85}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.primaryBtnText}>Buscar</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.ghostBtn, { flex: 1 }, (exportingCSV || exportingPDF) && styles.disabled]}
+              onPress={exportarCSV}
+              disabled={exportingCSV || exportingPDF}
+              activeOpacity={0.7}
+            >
+              {exportingCSV ? (
+                <ActivityIndicator color={colors.text} size="small" />
+              ) : (
+                <Text style={styles.ghostBtnText}>CSV</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.ghostBtn, { flex: 1 }, (exportingCSV || exportingPDF) && styles.disabled]}
+              onPress={exportarPDF}
+              disabled={exportingCSV || exportingPDF}
+              activeOpacity={0.7}
+            >
+              {exportingPDF ? (
+                <ActivityIndicator color={colors.text} size="small" />
+              ) : (
+                <Text style={styles.ghostBtnText}>PDF</Text>
+              )}
+            </TouchableOpacity>
+          </View>
 
-            <Text style={styles.sectionHeading}>Por destino</Text>
-            <View style={styles.breakdownRow}>
-              {breakdown.map((d) => (
-                <View
-                  key={d.id}
-                  style={[styles.breakdownCard, { borderColor: d.color }]}
-                >
-                  <Text style={styles.breakdownEmoji}>{d.emoji}</Text>
-                  <Text style={styles.breakdownLabel} numberOfLines={1}>
-                    {d.id}
+          <View style={[styles.row2, { marginTop: 12 }]}>
+            <View style={[styles.col, styles.searchWrap]}>
+              <Text style={styles.searchIcon}>🔍</Text>
+              <TextInput
+                style={styles.searchInput}
+                value={searchProduto}
+                onChangeText={setSearchProduto}
+                placeholder="Filtrar por produto..."
+                placeholderTextColor={colors.muted}
+              />
+            </View>
+            <View style={styles.col}>
+              <TouchableOpacity
+                style={[styles.input, styles.dateInput]}
+                onPress={() => setDestinoPickerOpen(true)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.dateValue} numberOfLines={1}>
+                  {filtroDestino}
+                </Text>
+                <Ionicons name="chevron-down" size={16} color={colors.muted} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
+        {/* 3. Alert estimado */}
+        <View style={styles.alertBox}>
+          <Text style={styles.alertText}>Custo estimado para fins de gestão</Text>
+        </View>
+
+        {errorMsg ? <Text style={styles.error}>{errorMsg}</Text> : null}
+
+        {/* 4. Stats Grid */}
+        <View style={styles.statCardFull}>
+          <Text style={styles.statLabel}>TOTAL SOBRAS POR UNIDADE</Text>
+          {totaisPorUnidade.length === 0 ? (
+            <Text style={styles.statEmpty}>—</Text>
+          ) : (
+            <View style={styles.chipsRow}>
+              {totaisPorUnidade.map((t) => (
+                <View key={t.unidade} style={styles.chip}>
+                  <Text style={styles.chipText}>
+                    {t.quantidade.toFixed(t.quantidade % 1 === 0 ? 0 : 2).replace('.', ',')}{' '}
+                    {t.unidade}
                   </Text>
-                  <Text style={[styles.breakdownCount, { color: d.color }]}>
-                    {d.count}
-                  </Text>
-                  <Text style={styles.breakdownPct}>{d.pct}%</Text>
                 </View>
               ))}
             </View>
+          )}
+        </View>
 
-            <Text style={styles.sectionHeading}>Ranking de perdas</Text>
-            {ranking.length === 0 ? (
-              <Text style={styles.empty}>Sem dados para o período.</Text>
-            ) : (
-              <View style={styles.rankingCard}>
-                {ranking.map((r, idx) => (
-                  <View key={r.nome + idx} style={styles.rankingRow}>
-                    <View style={styles.rankBadge}>
-                      <Text style={styles.rankBadgeText}>{idx + 1}</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.rankingNome}>{r.nome}</Text>
-                      <Text style={styles.rankingMeta}>
-                        {r.quantidade.toString().replace('.', ',')} {r.unidade}
-                      </Text>
-                    </View>
-                    {r.temCusto && r.prejuizo > 0 ? (
-                      <Text style={styles.rankingValor}>{formatBRL(r.prejuizo)}</Text>
-                    ) : (
-                      <Text style={styles.rankingSemCusto}>sem custo</Text>
-                    )}
-                  </View>
-                ))}
-              </View>
-            )}
+        <View style={styles.statsRow}>
+          <View style={[styles.statCardHalf, { marginRight: 5 }]}>
+            <Text style={styles.statLabel}>PREJUÍZO EST.</Text>
+            <Text style={[styles.statValueBig, { color: colors.accent }]}>
+              {formatBRL(totals.prejuizo)}
+            </Text>
+            <Text style={styles.statSub}>no período</Text>
+          </View>
+          <View style={[styles.statCardHalf, { marginLeft: 5 }]}>
+            <Text style={styles.statLabel}>LANÇAMENTOS</Text>
+            <Text style={styles.statValueBig}>{totals.total}</Text>
+            <Text style={styles.statSub}>registros</Text>
+          </View>
+        </View>
 
-            {insights ? (
-              <>
-                <Text style={styles.sectionHeading}>Insights</Text>
-                <View style={styles.insightsCard}>
-                  {insights.destinoMaisFrequente ? (
-                    <View style={styles.insightRow}>
-                      <Text style={styles.insightEmoji}>🎯</Text>
-                      <Text style={styles.insightText}>
-                        Destino mais frequente:{' '}
-                        <Text style={styles.insightHighlight}>
-                          {insights.destinoMaisFrequente}
-                        </Text>
-                      </Text>
-                    </View>
-                  ) : null}
+        <View style={styles.statCardFull}>
+          <Text style={styles.statLabel}>💰 VALOR RECUPERADO</Text>
+          <Text style={[styles.statValueBig, { color: colors.gold }]}>
+            {formatBRL(totals.recuperado)}
+          </Text>
+          <Text style={styles.statSub}>vendas resgatadas</Text>
+        </View>
 
-                  {insights.diffCountPct != null ? (
-                    <TrendRow
-                      label="Lançamentos vs período anterior"
-                      pct={insights.diffCountPct}
-                      invertColor
-                    />
-                  ) : null}
-
-                  {insights.diffPrejuizoPct != null ? (
-                    <TrendRow
-                      label="Prejuízo vs período anterior"
-                      pct={insights.diffPrejuizoPct}
-                      invertColor
-                    />
-                  ) : null}
+        {/* 5. Card Ranking */}
+        <View style={styles.card}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.bullet} />
+            <Text style={styles.sectionTitle}>Ranking de perdas</Text>
+          </View>
+          {ranking.length === 0 ? (
+            <Text style={styles.empty}>Sem dados para o período.</Text>
+          ) : (
+            ranking.map((r, idx) => (
+              <View key={(r.nome || '') + idx} style={styles.rankItem}>
+                <View style={styles.rankBadge}>
+                  <Text style={styles.rankBadgeText}>{idx + 1}</Text>
                 </View>
-              </>
+                <View style={styles.rankInfo}>
+                  <Text style={styles.rankNome}>{(r.nome || '').toUpperCase()}</Text>
+                  <Text style={styles.rankMeta}>
+                    {r.quantidade.toString().replace('.', ',')} {r.unidade}
+                  </Text>
+                </View>
+                {r.temCusto && r.prejuizo > 0 ? (
+                  <Text style={styles.rankValor}>{formatBRL(r.prejuizo)}</Text>
+                ) : (
+                  <Text style={styles.rankSemCusto}>sem custo</Text>
+                )}
+              </View>
+            ))
+          )}
+        </View>
+
+        {/* 6. Card Insights */}
+        {insights ? (
+          <View style={styles.card}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.bullet} />
+              <Text style={styles.sectionTitle}>Insights automáticos</Text>
+            </View>
+
+            {insights.destinoMaisFrequente ? (
+              <View style={styles.insightCard}>
+                <Text style={styles.insightLabel}>DESTINO MAIS FREQUENTE</Text>
+                <Text style={styles.insightValue}>{insights.destinoMaisFrequente}</Text>
+              </View>
             ) : null}
 
-            {detalheProdutos.length > 0 ? (
-              <View style={styles.detalheBlock}>
-                <TouchableOpacity
-                  style={styles.detalheHeader}
-                  onPress={() => setDetalheExpanded((v) => !v)}
-                  activeOpacity={0.7}
+            {insights.produtoMaisPerdido ? (
+              <View style={styles.insightCard}>
+                <Text style={styles.insightLabel}>PRODUTO MAIS PERDIDO</Text>
+                <Text style={styles.insightValue}>{insights.produtoMaisPerdido}</Text>
+              </View>
+            ) : null}
+
+            {insights.diffCountPct != null ? (
+              <View style={styles.insightCard}>
+                <Text style={styles.insightLabel}>LANÇAMENTOS VS PERÍODO ANTERIOR</Text>
+                <Text
+                  style={[
+                    styles.insightValue,
+                    { color: insights.diffCountPct > 0 ? colors.accent : colors.green },
+                  ]}
                 >
-                  <Text style={styles.detalheTitle}>
-                    📋 Detalhe por Produto — Perdas ({detalheProdutos.length})
-                  </Text>
-                  <Text style={styles.detalheArrow}>
-                    {detalheExpanded ? '▲' : '▼'}
-                  </Text>
-                </TouchableOpacity>
+                  {insights.diffCountPct > 0 ? '↑ +' : insights.diffCountPct < 0 ? '↓ ' : ''}
+                  {insights.diffCountPct}%
+                </Text>
+              </View>
+            ) : null}
 
-                {detalheExpanded ? (
-                  <View style={styles.detalheCard}>
-                    <View style={styles.detalheTableHeader}>
-                      <Text style={[styles.detalheTh, styles.detalheColProduto]}>
-                        Produto
+            {insights.diffPrejuizoPct != null ? (
+              <View style={styles.insightCard}>
+                <Text style={styles.insightLabel}>PREJUÍZO VS PERÍODO ANTERIOR</Text>
+                <Text
+                  style={[
+                    styles.insightValue,
+                    { color: insights.diffPrejuizoPct > 0 ? colors.accent : colors.green },
+                  ]}
+                >
+                  {insights.diffPrejuizoPct > 0 ? '↑ +' : insights.diffPrejuizoPct < 0 ? '↓ ' : ''}
+                  {insights.diffPrejuizoPct}%
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        {/* 7. Card Destino das sobras */}
+        {destinosResumo.length > 0 ? (
+          <View style={styles.card}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.bullet} />
+              <Text style={styles.sectionTitle}>Destino das sobras</Text>
+            </View>
+            <View style={styles.destinoCard}>
+              {destinosResumo.map((d, idx) => {
+                const qtdText = Object.entries(d.porUnidade)
+                  .map(
+                    ([u, q]) =>
+                      `${q.toFixed(q % 1 === 0 ? 0 : 2).replace('.', ',')} ${u}`
+                  )
+                  .join(' · ');
+                const last = idx === destinosResumo.length - 1;
+                return (
+                  <View
+                    key={d.id}
+                    style={[styles.destinoRow, last && styles.destinoRowLast]}
+                  >
+                    <Text style={styles.destinoEmoji}>{d.emoji}</Text>
+                    <View style={styles.destinoInfo}>
+                      <Text style={[styles.destinoNome, { color: d.color }]}>
+                        {d.id}
                       </Text>
-                      <Text style={[styles.detalheTh, styles.detalheColQtd]}>
-                        Sobra
-                      </Text>
-                      <Text style={[styles.detalheTh, styles.detalheColDestino]}>
-                        Destino
-                      </Text>
-                      <Text style={[styles.detalheTh, styles.detalheColPrej]}>
-                        Prejuízo
-                      </Text>
+                      <Text style={styles.destinoQtd}>{qtdText}</Text>
                     </View>
+                    <Text style={styles.destinoPct}>{d.pct}%</Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
 
-                    {(detalheVerTodos
-                      ? detalheProdutos
-                      : detalheProdutos.slice(0, 5)
-                    ).map((p, idx) => {
-                      const destinoCfg = DESTINOS.find(
-                        (d) => d.id === p.destinoMaisFrequente
-                      );
-                      return (
-                        <View
-                          key={(p.nome || '') + idx}
-                          style={[
-                            styles.detalheRow,
-                            idx % 2 === 0 && styles.detalheRowAlt,
-                          ]}
+        {/* 8. Card Detalhe por produto (recolhível) */}
+        {detalheProdutos.length > 0 ? (
+          <View style={styles.card}>
+            <TouchableOpacity
+              style={styles.collapseHeaderRow}
+              onPress={() => setDetalheExpanded((v) => !v)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.collapseTitle}>
+                📋 Detalhe por Produto — Perdas ({detalheProdutos.length})
+              </Text>
+              <Text style={styles.collapseArrow}>{detalheExpanded ? '▲' : '▼'}</Text>
+            </TouchableOpacity>
+
+            {detalheExpanded ? (
+              <View style={styles.detalheTable}>
+                <View style={styles.detalheTableHeader}>
+                  <Text style={[styles.detalheTh, styles.detalheColProduto]}>
+                    PRODUTO
+                  </Text>
+                  <Text style={[styles.detalheTh, styles.detalheColQtd]}>SOBRA</Text>
+                  <Text style={[styles.detalheTh, styles.detalheColDestino]}>
+                    DESTINO
+                  </Text>
+                  <Text style={[styles.detalheTh, styles.detalheColPrej]}>
+                    PREJUÍZO
+                  </Text>
+                </View>
+
+                {(detalheVerTodos ? detalheProdutos : detalheProdutos.slice(0, 5)).map(
+                  (p, idx, arr) => {
+                    const destinoCfg = DESTINOS.find(
+                      (d) => d.id === p.destinoMaisFrequente
+                    );
+                    const last = idx === arr.length - 1;
+                    return (
+                      <View
+                        key={(p.nome || '') + idx}
+                        style={[styles.detalheRow, last && styles.detalheRowLast]}
+                      >
+                        <Text
+                          style={[styles.detalheTd, styles.detalheColProduto]}
+                          numberOfLines={2}
                         >
-                          <Text
-                            style={[styles.detalheTd, styles.detalheColProduto]}
-                            numberOfLines={2}
-                          >
-                            {p.nome}
-                          </Text>
-                          <Text
-                            style={[styles.detalheTd, styles.detalheColQtd]}
-                          >
-                            {p.quantidade.toFixed(2).replace('.', ',')} {p.unidade}
-                          </Text>
+                          {p.nome}
+                        </Text>
+                        <Text style={[styles.detalheTd, styles.detalheColQtd]}>
+                          {p.quantidade.toFixed(2).replace('.', ',')} {p.unidade}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.detalheTd,
+                            styles.detalheColDestino,
+                            {
+                              color: destinoCfg?.color || colors.muted,
+                              fontWeight: '700',
+                            },
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {p.destinoMaisFrequente}
+                        </Text>
+                        {p.temCusto && p.prejuizo > 0 ? (
                           <Text
                             style={[
                               styles.detalheTd,
-                              styles.detalheColDestino,
-                              {
-                                color:
-                                  destinoCfg?.color || colors.muted,
-                                fontWeight: '600',
-                              },
+                              styles.detalheColPrej,
+                              styles.detalhePrej,
                             ]}
-                            numberOfLines={1}
                           >
-                            {p.destinoMaisFrequente}
+                            {formatBRL(p.prejuizo)}
                           </Text>
-                          {p.temCusto && p.prejuizo > 0 ? (
-                            <Text
-                              style={[
-                                styles.detalheTd,
-                                styles.detalheColPrej,
-                                styles.detalhePrej,
-                              ]}
-                            >
-                              {formatBRL(p.prejuizo)}
-                            </Text>
-                          ) : (
-                            <Text
-                              style={[
-                                styles.detalheTd,
-                                styles.detalheColPrej,
-                                styles.detalheSemCusto,
-                              ]}
-                            >
-                              —
-                            </Text>
-                          )}
-                        </View>
-                      );
-                    })}
-
-                    {detalheProdutos.length > 5 ? (
-                      <TouchableOpacity
-                        style={styles.verTodosBtn}
-                        onPress={() => setDetalheVerTodos((v) => !v)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.verTodosText}>
-                          {detalheVerTodos
-                            ? 'Mostrar menos ▲'
-                            : `Ver todos ${detalheProdutos.length} produtos ▼`}
-                        </Text>
-                      </TouchableOpacity>
-                    ) : null}
-                  </View>
-                ) : null}
-              </View>
-            ) : null}
-
-            {detalheResgatadas.length > 0 ? (
-              <View style={styles.detalheBlock}>
-                <TouchableOpacity
-                  style={styles.detalheHeader}
-                  onPress={() => setResgatadasExpanded((v) => !v)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.detalheTitle}>
-                    💰 Vendas Resgatadas ({detalheResgatadas.length})
-                  </Text>
-                  <Text style={styles.detalheArrow}>
-                    {resgatadasExpanded ? '▲' : '▼'}
-                  </Text>
-                </TouchableOpacity>
-
-                {resgatadasExpanded ? (
-                  <View style={styles.detalheCard}>
-                    <View style={styles.detalheTableHeader}>
-                      <Text
-                        style={[styles.detalheTh, styles.resgColProduto]}
-                      >
-                        Produto
-                      </Text>
-                      <Text style={[styles.detalheTh, styles.resgColQtd]}>
-                        Quantidade
-                      </Text>
-                      <Text style={[styles.detalheTh, styles.resgColUnid]}>
-                        Unidade
-                      </Text>
-                    </View>
-
-                    {detalheResgatadas.map((l, idx) => (
-                      <View
-                        key={l.id}
-                        style={[
-                          styles.detalheRow,
-                          idx % 2 === 0 && styles.detalheRowAlt,
-                        ]}
-                      >
-                        <Text
-                          style={[styles.detalheTd, styles.resgColProduto]}
-                          numberOfLines={2}
-                        >
-                          {l.produto_nome}
-                        </Text>
-                        <Text style={[styles.detalheTd, styles.resgColQtd]}>
-                          {String(l.quantidade ?? '').replace('.', ',')}
-                        </Text>
-                        <Text style={[styles.detalheTd, styles.resgColUnid]}>
-                          {l.unidade || '-'}
-                        </Text>
+                        ) : (
+                          <Text
+                            style={[
+                              styles.detalheTd,
+                              styles.detalheColPrej,
+                              styles.detalheSemCusto,
+                            ]}
+                          >
+                            —
+                          </Text>
+                        )}
                       </View>
-                    ))}
+                    );
+                  }
+                )}
 
-                    <View style={styles.totalRecuperadoRow}>
-                      <Text style={styles.totalRecuperadoText}>
-                        Valor Recuperado: {formatBRL(totals.recuperado)}
-                      </Text>
-                    </View>
-                  </View>
+                {detalheProdutos.length > 5 ? (
+                  <TouchableOpacity
+                    style={styles.verTodosBtn}
+                    onPress={() => setDetalheVerTodos((v) => !v)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.verTodosText}>
+                      {detalheVerTodos
+                        ? 'Mostrar menos ▲'
+                        : `Ver todos ${detalheProdutos.length} produtos ▼`}
+                    </Text>
+                  </TouchableOpacity>
                 ) : null}
               </View>
             ) : null}
+          </View>
+        ) : null}
 
-            <Text style={styles.sectionHeading}>Lançamentos</Text>
-            {lancamentos.length === 0 ? (
+        {/* 9. Seção Lançamentos (recolhível) */}
+        <View style={styles.lancamentosWrap}>
+          <TouchableOpacity
+            style={styles.lancamentosHeader}
+            onPress={() => setLancamentosExpanded((v) => !v)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.lancamentosTitle}>
+              Lançamentos ({lancamentosFiltrados.length})
+            </Text>
+            <Text style={styles.collapseArrow}>{lancamentosExpanded ? '▲' : '▼'}</Text>
+          </TouchableOpacity>
+
+          {lancamentosExpanded ? (
+            lancamentosFiltrados.length === 0 ? (
               <Text style={styles.empty}>Nenhum lançamento neste período.</Text>
             ) : (
-              lancamentos.map((l) => {
+              lancamentosFiltrados.map((l) => {
                 const destinoCfg = DESTINOS.find((d) => d.id === l.destino);
                 return (
                   <View key={l.id} style={styles.itemCard}>
@@ -1282,310 +1313,517 @@ export default function PainelScreen() {
                   </View>
                 );
               })
-            )}
-          </>
-        )}
+            )
+          ) : null}
+        </View>
       </ScrollView>
+
+      {/* DatePickers */}
+      {showPickerInicio && Platform.OS === 'android' ? (
+        <DateTimePicker
+          value={dataInicio}
+          mode="date"
+          display="default"
+          onChange={(e, d) => onChangeDate('inicio', e, d)}
+        />
+      ) : null}
+      {showPickerFim && Platform.OS === 'android' ? (
+        <DateTimePicker
+          value={dataFim}
+          mode="date"
+          display="default"
+          onChange={(e, d) => onChangeDate('fim', e, d)}
+        />
+      ) : null}
+
+      {/* iOS DatePicker em modal */}
+      {Platform.OS === 'ios' ? (
+        <>
+          <Modal
+            visible={showPickerInicio}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setShowPickerInicio(false)}
+          >
+            <View style={styles.pickerBackdrop}>
+              <View style={styles.pickerCard}>
+                <Text style={styles.pickerTitle}>Data inicial</Text>
+                <DateTimePicker
+                  value={dataInicio}
+                  mode="date"
+                  display="spinner"
+                  onChange={(e, d) => onChangeDate('inicio', e, d)}
+                  themeVariant="dark"
+                  textColor={colors.text}
+                />
+                <TouchableOpacity
+                  style={styles.pickerConfirm}
+                  onPress={() => setShowPickerInicio(false)}
+                >
+                  <Text style={styles.pickerConfirmText}>OK</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
+
+          <Modal
+            visible={showPickerFim}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setShowPickerFim(false)}
+          >
+            <View style={styles.pickerBackdrop}>
+              <View style={styles.pickerCard}>
+                <Text style={styles.pickerTitle}>Data final</Text>
+                <DateTimePicker
+                  value={dataFim}
+                  mode="date"
+                  display="spinner"
+                  onChange={(e, d) => onChangeDate('fim', e, d)}
+                  themeVariant="dark"
+                  textColor={colors.text}
+                />
+                <TouchableOpacity
+                  style={styles.pickerConfirm}
+                  onPress={() => setShowPickerFim(false)}
+                >
+                  <Text style={styles.pickerConfirmText}>OK</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
+        </>
+      ) : null}
+
+      {/* Destino picker */}
+      <Modal
+        visible={destinoPickerOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDestinoPickerOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.pickerBackdrop}
+          activeOpacity={1}
+          onPress={() => setDestinoPickerOpen(false)}
+        >
+          <View style={styles.pickerCard}>
+            <Text style={styles.pickerTitle}>Filtrar por destino</Text>
+            {DESTINO_OPTIONS.map((d) => {
+              const active = d === filtroDestino;
+              return (
+                <TouchableOpacity
+                  key={d}
+                  style={[styles.pickerOption, active && styles.pickerOptionActive]}
+                  onPress={() => {
+                    setFiltroDestino(d);
+                    setDestinoPickerOpen(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.pickerOptionText,
+                      active && styles.pickerOptionTextActive,
+                    ]}
+                  >
+                    {d}
+                  </Text>
+                  {active ? (
+                    <Ionicons name="checkmark" size={18} color={colors.accent} />
+                  ) : null}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
-  );
-}
-
-function StatCard({ emoji, label, value, valueColor }) {
-  return (
-    <View style={styles.statCard}>
-      <Text style={styles.statEmoji}>{emoji}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={[styles.statValue, valueColor && { color: valueColor }]}>
-        {value}
-      </Text>
-    </View>
-  );
-}
-
-function TrendRow({ label, pct, invertColor }) {
-  // invertColor: true means "lower is better" (e.g., prejuízo, lançamentos)
-  // so positive delta = bad (red), negative delta = good (green)
-  const isPositive = pct > 0;
-  const isNegative = pct < 0;
-  const good = invertColor ? isNegative : isPositive;
-  const bad = invertColor ? isPositive : isNegative;
-  const color = good ? colors.green : bad ? colors.accent : colors.muted;
-  const arrow = isPositive ? '📈' : isNegative ? '📉' : '➡️';
-  const sign = pct > 0 ? '+' : '';
-  return (
-    <View style={styles.insightRow}>
-      <Text style={styles.insightEmoji}>{arrow}</Text>
-      <Text style={styles.insightText}>
-        {label}: <Text style={[styles.insightHighlight, { color }]}>{sign}{pct}%</Text>
-      </Text>
-    </View>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  container: { padding: 20, paddingBottom: 60 },
+  container: { paddingBottom: 40 },
 
-  title: {
+  // 1. Hero
+  hero: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 12,
+    borderRadius: 16,
+    padding: 20,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#1a2a3a',
+  },
+  heroContent: { flex: 1, paddingRight: 12 },
+  heroEyebrow: {
+    color: colors.gold,
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  heroTitle: {
     color: colors.text,
-    fontSize: 32,
+    fontSize: 26,
     fontWeight: '700',
     fontFamily: SERIF,
+    marginBottom: 6,
   },
-  subtitle: {
+  heroSubtitle: {
     color: colors.muted,
-    fontSize: 14,
-    marginTop: 4,
-    marginBottom: 20,
-    textTransform: 'capitalize',
+    fontSize: 13,
+    lineHeight: 18,
   },
-
-  filterRow: {
-    flexDirection: 'row',
-    marginBottom: 20,
-  },
-  filterBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: colors.surface,
+  biBadge: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.1)',
     borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    marginRight: 8,
-  },
-  filterBtnActive: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
-  },
-  filterText: { color: colors.text, fontWeight: '600' },
-  filterTextActive: { color: colors.surface },
-
-  exportRow: {
-    flexDirection: 'row',
-    marginBottom: 16,
-    gap: 8,
-  },
-  exportBtn: {
-    flex: 1,
-    paddingVertical: 11,
-    borderRadius: 10,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.accent,
+    borderColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  exportBtnDisabled: { opacity: 0.55 },
-  exportBtnText: { color: colors.accent, fontWeight: '600', fontSize: 14 },
-
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginBottom: 8,
+  biBadgeText: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 1,
   },
-  statCard: {
-    width: '48%',
-    backgroundColor: colors.surface,
-    borderRadius: 12,
+
+  // Cards
+  card: {
+    backgroundColor: '#2a2a2a',
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: '#333333',
+    borderRadius: 14,
     padding: 14,
+    marginHorizontal: 16,
+    marginBottom: 12,
+  },
+
+  // Labels e inputs
+  label: {
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    color: colors.muted,
+    marginBottom: 5,
+  },
+  input: {
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1.5,
+    borderColor: '#333333',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    fontSize: 15,
+    color: colors.text,
+  },
+  dateInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  dateValue: {
+    color: colors.text,
+    fontSize: 15,
+  },
+  dateIcon: { fontSize: 14 },
+
+  row2: { flexDirection: 'row', gap: 8 },
+  col: { flex: 1 },
+
+  actionsRow: { flexDirection: 'row', gap: 8 },
+  primaryBtn: {
+    backgroundColor: colors.accent,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  primaryBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  ghostBtn: {
+    borderWidth: 1,
+    borderColor: '#333333',
+    backgroundColor: 'transparent',
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ghostBtnText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  disabled: { opacity: 0.55 },
+
+  // Busca
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1.5,
+    borderColor: '#333333',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+  },
+  searchIcon: { fontSize: 14, marginRight: 6 },
+  searchInput: {
+    flex: 1,
+    paddingVertical: 11,
+    fontSize: 15,
+    color: colors.text,
+  },
+
+  // 3. Alert
+  alertBox: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    backgroundColor: '#2a2200',
+    borderWidth: 1,
+    borderColor: colors.gold,
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  alertText: {
+    color: colors.gold,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+
+  // 4. Stats
+  statCardFull: {
+    backgroundColor: '#2a2a2a',
+    borderWidth: 1,
+    borderColor: '#333333',
+    borderRadius: 14,
+    padding: 14,
+    marginHorizontal: 16,
     marginBottom: 10,
   },
-  statEmoji: { fontSize: 22, marginBottom: 4 },
+  statsRow: {
+    flexDirection: 'row',
+    marginHorizontal: 11,
+    marginBottom: 10,
+  },
+  statCardHalf: {
+    flex: 1,
+    backgroundColor: '#2a2a2a',
+    borderWidth: 1,
+    borderColor: '#333333',
+    borderRadius: 14,
+    padding: 14,
+  },
   statLabel: {
     color: colors.muted,
     fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.6,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    marginBottom: 8,
   },
-  statValue: {
+  statValueBig: {
     color: colors.text,
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '700',
     fontFamily: SERIF,
+  },
+  statSub: {
+    color: colors.muted,
+    fontSize: 11,
     marginTop: 4,
   },
+  statEmpty: {
+    color: colors.muted,
+    fontSize: 14,
+  },
+  chipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 2,
+  },
+  chip: {
+    backgroundColor: '#333333',
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  chipText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '600',
+  },
 
-  sectionHeading: {
+  // Section header (bolinha + título)
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  bullet: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.accent,
+    marginRight: 10,
+  },
+  sectionTitle: {
     color: colors.text,
     fontSize: 18,
     fontWeight: '700',
     fontFamily: SERIF,
-    marginTop: 16,
-    marginBottom: 10,
   },
 
-  breakdownRow: {
+  // 5. Ranking
+  rankItem: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  breakdownCard: {
-    flex: 1,
-    backgroundColor: colors.surface,
+    alignItems: 'center',
+    backgroundColor: '#1a1a1a',
     borderRadius: 10,
-    borderWidth: 1.5,
-    paddingVertical: 10,
-    paddingHorizontal: 6,
-    marginHorizontal: 3,
-    alignItems: 'center',
-  },
-  breakdownEmoji: { fontSize: 18 },
-  breakdownLabel: {
-    color: colors.text,
-    fontSize: 11,
-    marginTop: 4,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  breakdownCount: {
-    fontSize: 20,
-    fontWeight: '700',
-    fontFamily: SERIF,
-    marginTop: 4,
-  },
-  breakdownPct: {
-    color: colors.muted,
-    fontSize: 11,
-    marginTop: 2,
-  },
-
-  rankingCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: 4,
-  },
-  rankingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    padding: 12,
+    marginBottom: 6,
   },
   rankBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
   },
   rankBadgeText: {
-    color: colors.surface,
+    color: '#fff',
+    fontSize: 14,
     fontWeight: '700',
-    fontSize: 13,
   },
-  rankingNome: {
+  rankInfo: { flex: 1 },
+  rankNome: {
     color: colors.text,
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
-  rankingMeta: { color: colors.muted, fontSize: 12, marginTop: 2 },
-  rankingValor: {
+  rankMeta: {
+    color: colors.muted,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  rankValor: {
     color: colors.accent,
     fontSize: 14,
     fontWeight: '700',
   },
-  rankingSemCusto: {
+  rankSemCusto: {
     color: colors.muted,
     fontSize: 12,
     fontStyle: 'italic',
   },
 
-  insightsCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 14,
-  },
-  insightRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-  },
-  insightEmoji: { fontSize: 18, marginRight: 10 },
-  insightText: { color: colors.text, fontSize: 14, flex: 1 },
-  insightHighlight: { fontWeight: '700' },
-
-  alertBanner: {
-    backgroundColor: colors.surfaceCard,
-    borderWidth: 1,
-    borderColor: colors.gold,
-    borderRadius: 12,
-    padding: 14,
-    marginTop: 8,
-    marginBottom: 8,
-  },
-  alertHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  // 6. Insights
+  insightCard: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 10,
+    padding: 12,
     marginBottom: 6,
   },
-  alertEmoji: { fontSize: 18, marginRight: 8 },
-  alertTitle: {
-    color: colors.text,
-    fontWeight: '700',
-    fontSize: 14,
-    flex: 1,
+  insightLabel: {
+    color: colors.muted,
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    marginBottom: 4,
   },
-  alertItem: {
+  insightValue: {
     color: colors.text,
-    fontSize: 13,
-    marginTop: 4,
-    lineHeight: 18,
+    fontSize: 16,
+    fontWeight: '700',
   },
 
-  detalheBlock: { marginTop: 16 },
-  detalheHeader: {
+  // 7. Destinos
+  destinoCard: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 10,
+    padding: 14,
+  },
+  destinoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333333',
+  },
+  destinoRowLast: { borderBottomWidth: 0 },
+  destinoEmoji: {
+    fontSize: 22,
+    marginRight: 12,
+  },
+  destinoInfo: { flex: 1 },
+  destinoNome: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  destinoQtd: {
+    color: colors.muted,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  destinoPct: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+
+  // 8. Detalhe (recolhível)
+  collapseHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    backgroundColor: colors.surface,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
+    paddingVertical: 4,
   },
-  detalheTitle: {
+  collapseTitle: {
     color: colors.text,
-    fontWeight: '700',
     fontSize: 15,
-    flex: 1,
+    fontWeight: '700',
     fontFamily: SERIF,
+    flex: 1,
   },
-  detalheArrow: {
+  collapseArrow: {
     color: colors.accent,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     marginLeft: 8,
   },
-  detalheCard: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderTopWidth: 0,
-    borderBottomLeftRadius: 10,
-    borderBottomRightRadius: 10,
-    marginTop: -1,
+  detalheTable: {
+    marginTop: 12,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 10,
     overflow: 'hidden',
   },
   detalheTableHeader: {
     flexDirection: 'row',
     paddingVertical: 8,
     paddingHorizontal: 10,
-    backgroundColor: colors.text,
+    backgroundColor: '#1c1c1c',
   },
   detalheTh: {
-    color: colors.surface,
+    color: colors.muted,
     fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
@@ -1593,20 +1831,20 @@ const styles = StyleSheet.create({
   },
   detalheRow: {
     flexDirection: 'row',
-    paddingVertical: 8,
+    paddingVertical: 10,
     paddingHorizontal: 10,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: '#333333',
     alignItems: 'center',
   },
-  detalheRowAlt: { backgroundColor: colors.bg },
+  detalheRowLast: { borderBottomWidth: 0 },
   detalheTd: {
     color: colors.text,
     fontSize: 12,
   },
   detalheColProduto: { flex: 2.2, paddingRight: 6 },
-  detalheColQtd: { flex: 1.1, textAlign: 'right', paddingRight: 6 },
-  detalheColDestino: { flex: 1.4, textAlign: 'right', paddingRight: 6 },
+  detalheColQtd: { flex: 1.2, textAlign: 'right', paddingRight: 6 },
+  detalheColDestino: { flex: 1.5, textAlign: 'right', paddingRight: 6 },
   detalheColPrej: { flex: 1.3, textAlign: 'right' },
   detalhePrej: { color: colors.accent, fontWeight: '700' },
   detalheSemCusto: { color: colors.muted, fontStyle: 'italic' },
@@ -1614,7 +1852,7 @@ const styles = StyleSheet.create({
   verTodosBtn: {
     paddingVertical: 10,
     alignItems: 'center',
-    backgroundColor: colors.bg,
+    backgroundColor: '#1c1c1c',
   },
   verTodosText: {
     color: colors.accent,
@@ -1622,40 +1860,120 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  resgColProduto: { flex: 2.4, paddingRight: 6 },
-  resgColQtd: { flex: 1.2, textAlign: 'right', paddingRight: 6 },
-  resgColUnid: { flex: 1, textAlign: 'right' },
-
-  totalRecuperadoRow: {
+  // 9. Lançamentos
+  lancamentosWrap: {
+    marginHorizontal: 16,
+    marginTop: 4,
+  },
+  lancamentosHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingVertical: 10,
-    paddingHorizontal: 12,
-    alignItems: 'flex-end',
-    backgroundColor: colors.bg,
+    marginBottom: 8,
   },
-  totalRecuperadoText: {
-    color: colors.gold,
+  lancamentosTitle: {
+    color: colors.text,
+    fontSize: 18,
     fontWeight: '700',
-    fontSize: 14,
+    fontFamily: SERIF,
+    flex: 1,
   },
-
   itemCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: colors.surface,
-    borderRadius: 10,
+    backgroundColor: '#2a2a2a',
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.border,
-    padding: 12,
+    borderColor: '#333333',
+    padding: 14,
     marginBottom: 8,
   },
-  itemNome: { color: colors.text, fontSize: 15, fontWeight: '600' },
-  itemMetaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
+  itemNome: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  itemMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
   itemQtd: { color: colors.muted, fontSize: 13 },
   itemSep: { color: colors.muted, fontSize: 13, marginHorizontal: 6 },
-  itemDestino: { fontSize: 13, fontWeight: '600' },
+  itemDestino: { fontSize: 13, fontWeight: '700' },
   itemRecuperado: { color: colors.green, fontSize: 12, marginTop: 4 },
   itemData: { color: colors.muted, fontSize: 12, marginLeft: 8 },
 
-  empty: { color: colors.muted, textAlign: 'center', marginVertical: 16 },
-  error: { color: colors.danger, marginTop: 24, textAlign: 'center' },
+  empty: {
+    color: colors.muted,
+    textAlign: 'center',
+    paddingVertical: 14,
+    fontSize: 13,
+  },
+  error: {
+    color: colors.danger,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    fontSize: 13,
+  },
+
+  // Picker modal
+  pickerBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  pickerCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#2a2a2a',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#333333',
+    padding: 16,
+  },
+  pickerTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  pickerOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: '#333333',
+    marginBottom: 6,
+  },
+  pickerOptionActive: {
+    borderColor: colors.accent,
+  },
+  pickerOptionText: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  pickerOptionTextActive: {
+    color: colors.accent,
+  },
+  pickerConfirm: {
+    backgroundColor: colors.accent,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  pickerConfirmText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
 });

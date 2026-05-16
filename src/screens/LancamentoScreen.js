@@ -113,6 +113,7 @@ export default function LancamentoScreen() {
 
   const [qtdProducao, setQtdProducao] = useState('');
   const [quantidade, setQuantidade] = useState('');
+  const [equivaleA, setEquivaleA] = useState('');
   const [unidade, setUnidade] = useState('Un');
   const [destino, setDestino] = useState(null);
   const [valorCheio, setValorCheio] = useState('');
@@ -693,6 +694,7 @@ export default function LancamentoScreen() {
     setSearch('');
     setQtdProducao('');
     setQuantidade('');
+    setEquivaleA('');
     setUnidade('Un');
     setDestino(null);
     setValorCheio('');
@@ -1011,21 +1013,21 @@ export default function LancamentoScreen() {
               </View>
 
               <Text style={styles.formLabel}>
-                Quantidade produzida{' '}
-                <Text style={styles.labelOpcional}>(opcional)</Text>
+                Qtd. Produzida{' '}
+                <Text style={styles.labelOpcional}>opcional</Text>
               </Text>
               <TextInput
                 style={styles.formInput}
                 value={qtdProducao}
                 onChangeText={setQtdProducao}
-                placeholder="0"
+                placeholder="Ex: 200"
                 placeholderTextColor={ACOES_MUTED}
                 keyboardType="decimal-pad"
                 editable={!saving}
               />
               <Text style={styles.helperText}>Registre o que foi produzido hoje</Text>
 
-              <Text style={styles.formLabel}>Quantidade de sobra</Text>
+              <Text style={styles.formLabel}>Qtd. de Sobra</Text>
               <TextInput
                 style={styles.formInput}
                 value={quantidade}
@@ -1035,6 +1037,44 @@ export default function LancamentoScreen() {
                 keyboardType="decimal-pad"
                 editable={!saving}
               />
+
+              {unidade === 'Kg' || unidade === 'L' ? (
+                <>
+                  <View style={styles.equivaleLabelRow}>
+                    <Text style={styles.formLabelInline}>
+                      Equivale a{' '}
+                      <Text style={styles.labelOpcional}>opcional</Text>
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.helpBtn}
+                      onPress={() =>
+                        Alert.alert(
+                          'Equivale a',
+                          'Se a sobra é em Kg, informe aqui quantas unidades isso representa. Útil para orientar a produção do próximo dia.'
+                        )
+                      }
+                      hitSlop={8}
+                      accessibilityLabel="Sobre o campo Equivale a"
+                    >
+                      <Text style={styles.helpBtnText}>?</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.equivaleInputWrap}>
+                    <TextInput
+                      style={[styles.formInput, styles.equivaleInput]}
+                      value={equivaleA}
+                      onChangeText={setEquivaleA}
+                      placeholder="Ex: 30"
+                      placeholderTextColor={ACOES_MUTED}
+                      keyboardType="number-pad"
+                      editable={!saving}
+                    />
+                    <View style={styles.equivaleBadge}>
+                      <Text style={styles.equivaleBadgeText}>Un</Text>
+                    </View>
+                  </View>
+                </>
+              ) : null}
 
               <Text style={styles.formLabel}>Unidade</Text>
               <View style={styles.pillsRow}>
@@ -1854,9 +1894,11 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   labelOpcional: {
-    color: colors.accent,
+    color: colors.gold,
     textTransform: 'lowercase',
     letterSpacing: 0,
+    fontSize: 10,
+    fontWeight: '700',
   },
   formInput: {
     backgroundColor: ACOES_INPUT_BG,
@@ -1867,6 +1909,43 @@ const styles = StyleSheet.create({
     fontSize: 15,
     borderWidth: 1,
     borderColor: ACOES_BORDER,
+  },
+  formLabelInline: {
+    fontSize: 11,
+    color: ACOES_MUTED,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  equivaleLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 14,
+    marginBottom: 6,
+  },
+  equivaleInputWrap: {
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  equivaleInput: {
+    paddingRight: 56,
+  },
+  equivaleBadge: {
+    position: 'absolute',
+    right: 8,
+    top: 8,
+    bottom: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: ACOES_BORDER,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  equivaleBadgeText: {
+    color: ACOES_TEXT,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
 
   destinosRow: {

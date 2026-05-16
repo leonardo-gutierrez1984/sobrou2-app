@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as DocumentPicker from 'expo-document-picker';
 import * as XLSX from 'xlsx';
 import { supabase } from '../services/supabase';
@@ -32,14 +33,29 @@ export default function ProdutosScreen() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
 
-  const [formVisible, setFormVisible] = useState(false);
-  const [editing, setEditing] = useState(null);
+  // Formulário inline (Novo produto)
+  const [nome, setNome] = useState('');
+  const [unidade, setUnidade] = useState('Un');
+  const [custo, setCusto] = useState('');
+  const [validade, setValidade] = useState('');
+  const [formError, setFormError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [unidadePickerOpen, setUnidadePickerOpen] = useState(false);
 
+  // Edição via modal
+  const [editTarget, setEditTarget] = useState(null);
+
+  // Exclusão
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Importação
   const [importing, setImporting] = useState(false);
   const [importStatus, setImportStatus] = useState('');
+
+  // Catálogo
+  const [search, setSearch] = useState('');
+  const [listExpanded, setListExpanded] = useState(true);
 
   useEffect(() => {
     let mounted = true;
@@ -72,7 +88,6 @@ export default function ProdutosScreen() {
         return;
       }
       setEmpresaId(membro.empresa_id);
-      // produtos são carregados via useFocusEffect abaixo
     })();
     return () => {
       mounted = false;
@@ -102,27 +117,57 @@ export default function ProdutosScreen() {
     setLoading(false);
   };
 
-  const openNew = () => {
-    setEditing(null);
-    setFormVisible(true);
+  const resetForm = () => {
+    setNome('');
+    setUnidade('Un');
+    setCusto('');
+    setValidade('');
+    setFormError('');
   };
 
-  const openEdit = (produto) => {
-    setEditing(produto);
-    setFormVisible(true);
-  };
+  const salvarProduto = async () => {
+    setFormError('');
+    const nomeTrim = nome.trim();
+    if (!nomeTrim) {
+      setFormError('Informe o nome do produto.');
+      return;
+    }
+    const custoNum = parseFloat(String(custo).replace(',', '.'));
+    if (custo && (isNaN(custoNum) || custoNum < 0)) {
+      setFormError('Custo inválido.');
+      return;
+    }
+    let validadeNum = null;
+    if (validade.trim()) {
+      validadeNum = parseInt(validade, 10);
+      if (isNaN(validadeNum) || validadeNum < 0) {
+        setFormError('Validade inválida.');
+        return;
+      }
+    }
 
-  const closeForm = () => {
-    setFormVisible(false);
-    setEditing(null);
-  };
-
-  const handleSaved = async () => {
-    closeForm();
+    setSaving(true);
+    const { error } = await supabase.from('produtos').insert({
+      nome: nomeTrim,
+      unidade,
+      custo_estimado: isNaN(custoNum) ? null : custoNum,
+      validade_dias: validadeNum,
+      user_id: userId,
+      empresa_id: empresaId,
+    });
+    setSaving(false);
+    if (error) {
+      setFormError(error.message);
+      return;
+    }
+    resetForm();
     if (empresaId) await loadProdutos(empresaId);
   };
 
-  const confirmDelete = (produto) => setDeleteTarget(produto);
+  const handleSaved = async () => {
+    setEditTarget(null);
+    if (empresaId) await loadProdutos(empresaId);
+  };
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -204,11 +249,11 @@ export default function ProdutosScreen() {
 
       const nomeRaw = row[headerInfo.nomeIdx];
       if (nomeRaw == null) continue;
-      const nome = String(nomeRaw).trim();
-      if (!nome || nome.toUpperCase() === 'NOME') continue;
+      const nomeStr = String(nomeRaw).trim();
+      if (!nomeStr || nomeStr.toUpperCase() === 'NOME') continue;
 
       const unidadeRaw = headerInfo.unidadeIdx !== -1 ? row[headerInfo.unidadeIdx] : '';
-      const unidade = normalizarUnidade(unidadeRaw);
+      const unidadeNorm = normalizarUnidade(unidadeRaw);
 
       let custoEstimado = null;
       if (headerInfo.custoIdx !== -1) {
@@ -223,8 +268,8 @@ export default function ProdutosScreen() {
       }
 
       produtosToImport.push({
-        nome,
-        unidade,
+        nome: nomeStr,
+        unidade: unidadeNorm,
         custo_estimado: custoEstimado,
         empresa_id: empresaId,
         user_id: userId,
@@ -260,87 +305,276 @@ export default function ProdutosScreen() {
     if (empresaId) await loadProdutos(empresaId);
   };
 
+  const filtrados = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return produtos;
+    return produtos.filter((p) => (p.nome || '').toLowerCase().includes(q));
+  }, [produtos, search]);
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <AppHeader />
-      <ScrollView contentContainerStyle={styles.container}>
-        <View style={styles.importSection}>
-          <TouchableOpacity
-            style={[styles.importButton, importing && styles.buttonDisabled]}
-            onPress={handleImportXLSX}
-            disabled={importing}
-            activeOpacity={0.7}
-          >
-            {importing ? (
-              <ActivityIndicator color={colors.accent} />
-            ) : (
-              <Text style={styles.importButtonText}>📥 Importar XLSX</Text>
-            )}
-          </TouchableOpacity>
-          {importStatus ? (
-            <Text style={styles.importStatus}>{importStatus}</Text>
-          ) : null}
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        {/* 1. Hero Banner */}
+        <LinearGradient
+          colors={['#1a1a1a', '#2a1a0a']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.hero}
+        >
+          <View style={styles.heroContent}>
+            <Text style={styles.heroEyebrow}>BASE OPERACIONAL</Text>
+            <Text style={styles.heroTitle}>Produtos e custos</Text>
+            <Text style={styles.heroSubtitle}>
+              Cadastre, importe e mantenha a ficha básica dos itens monitorados.
+            </Text>
+          </View>
+          <View style={styles.erpBadge}>
+            <Text style={styles.erpBadgeText}>ERP</Text>
+          </View>
+        </LinearGradient>
+
+        {/* 2. Card Importar */}
+        <View style={styles.card}>
+          <View style={styles.importRow}>
+            <Text style={styles.importTitle}>Importar produtos do ERP</Text>
+            <TouchableOpacity
+              style={[styles.ghostBtn, importing && styles.disabled]}
+              onPress={handleImportXLSX}
+              disabled={importing}
+              activeOpacity={0.7}
+            >
+              {importing ? (
+                <ActivityIndicator color={colors.text} size="small" />
+              ) : (
+                <Text style={styles.ghostBtnText}>Selecionar arquivo</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+          {importStatus ? <Text style={styles.importStatus}>{importStatus}</Text> : null}
         </View>
 
-        {loading ? (
-          <ActivityIndicator color={colors.accent} style={{ marginTop: 40 }} />
-        ) : loadError ? (
-          <Text style={styles.error}>{loadError}</Text>
-        ) : produtos.length === 0 ? (
-          <Text style={styles.empty}>Nenhum produto cadastrado. Toque em + para adicionar.</Text>
-        ) : (
-          produtos.map((p) => (
-            <View key={p.id} style={styles.card}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.cardNome}>{p.nome}</Text>
-                <View style={styles.cardMeta}>
-                  <Text style={styles.metaItem}>
-                    <Text style={styles.metaLabel}>Un: </Text>
-                    {p.unidade || '-'}
-                  </Text>
-                  <Text style={styles.metaItem}>
-                    <Text style={styles.metaLabel}>Custo: </Text>
-                    {formatBRL(p.custo_estimado)}
-                  </Text>
-                  {p.validade_dias != null ? (
-                    <Text style={styles.metaItem}>
-                      <Text style={styles.metaLabel}>Validade: </Text>
-                      {p.validade_dias}d
-                    </Text>
-                  ) : null}
-                </View>
-              </View>
-              <View style={styles.cardActions}>
-                <TouchableOpacity
-                  style={styles.iconBtn}
-                  onPress={() => openEdit(p)}
-                  hitSlop={8}
-                >
-                  <Ionicons name="create-outline" size={22} color={colors.accent} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.iconBtn}
-                  onPress={() => confirmDelete(p)}
-                  hitSlop={8}
-                >
-                  <Ionicons name="trash-outline" size={22} color={colors.danger} />
-                </TouchableOpacity>
-              </View>
+        {/* 3. Card Novo produto */}
+        <View style={styles.card}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.bullet} />
+            <Text style={styles.sectionTitle}>Novo produto</Text>
+          </View>
+
+          <Text style={styles.label}>NOME DO PRODUTO</Text>
+          <TextInput
+            style={styles.input}
+            value={nome}
+            onChangeText={setNome}
+            placeholder="Ex: Pão Francês"
+            placeholderTextColor={colors.muted}
+            editable={!saving}
+          />
+
+          <View style={styles.row2}>
+            <View style={styles.col}>
+              <Text style={styles.label}>UNIDADE</Text>
+              <TouchableOpacity
+                style={[styles.input, styles.pickerInput]}
+                onPress={() => setUnidadePickerOpen(true)}
+                disabled={saving}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.pickerValue}>{unidade}</Text>
+                <Ionicons name="chevron-down" size={16} color={colors.muted} />
+              </TouchableOpacity>
             </View>
-          ))
-        )}
+            <View style={styles.col}>
+              <Text style={styles.label}>
+                CUSTO EST. (R$) <Text style={styles.optionalTag}>opcional</Text>
+              </Text>
+              <TextInput
+                style={styles.input}
+                value={custo}
+                onChangeText={setCusto}
+                placeholder="0,00"
+                placeholderTextColor={colors.muted}
+                keyboardType="decimal-pad"
+                editable={!saving}
+              />
+            </View>
+          </View>
+
+          <View style={styles.alert}>
+            <Text style={styles.alertText}>Custo estimado para fins de gestão</Text>
+          </View>
+
+          <Text style={styles.label}>
+            VALIDADE (DIAS) <Text style={styles.optionalTag}>opcional</Text>
+          </Text>
+          <TextInput
+            style={styles.input}
+            value={validade}
+            onChangeText={setValidade}
+            placeholder="Ex: 5"
+            placeholderTextColor={colors.muted}
+            keyboardType="number-pad"
+            editable={!saving}
+          />
+          <Text style={styles.helperText}>
+            Se informado, o app alertará no dia do vencimento
+          </Text>
+
+          {formError ? <Text style={styles.error}>{formError}</Text> : null}
+
+          <TouchableOpacity
+            style={[styles.primaryBtn, saving && styles.disabled]}
+            onPress={salvarProduto}
+            disabled={saving}
+            activeOpacity={0.85}
+          >
+            {saving ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.primaryBtnText}>Cadastrar produto</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* 4. Card Catálogo */}
+        <View style={styles.card}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.bullet} />
+            <Text style={styles.sectionTitle}>Catálogo de produtos</Text>
+          </View>
+
+          <View style={styles.searchWrap}>
+            <Text style={styles.searchIcon}>🔍</Text>
+            <TextInput
+              style={styles.searchInput}
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Buscar produto..."
+              placeholderTextColor={colors.muted}
+            />
+          </View>
+
+          <TouchableOpacity
+            style={styles.collapseHeader}
+            onPress={() => setListExpanded((v) => !v)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.collapseHeaderText}>
+              PRODUTOS CADASTRADOS ({filtrados.length})
+            </Text>
+            <Text style={styles.collapseChevron}>{listExpanded ? '▲' : '▼'}</Text>
+          </TouchableOpacity>
+
+          {listExpanded ? (
+            loading ? (
+              <ActivityIndicator color={colors.accent} style={{ marginTop: 16 }} />
+            ) : loadError ? (
+              <Text style={styles.error}>{loadError}</Text>
+            ) : filtrados.length === 0 ? (
+              <Text style={styles.empty}>
+                {search ? 'Nenhum produto encontrado.' : 'Nenhum produto cadastrado.'}
+              </Text>
+            ) : (
+              filtrados.map((p, idx) => {
+                const last = idx === filtrados.length - 1;
+                return (
+                  <View
+                    key={p.id}
+                    style={[styles.productItem, last && styles.productItemLast]}
+                  >
+                    <View style={styles.productInfo}>
+                      <Text style={styles.productName}>
+                        {(p.nome || '').toUpperCase()}
+                      </Text>
+                      <Text style={styles.productMeta}>
+                        {p.unidade || '-'}
+                        {' · '}
+                        {formatBRL(p.custo_estimado)}
+                        {p.validade_dias != null ? (
+                          <Text style={styles.productMeta}>
+                            {' · '}
+                            {p.validade_dias} dias
+                          </Text>
+                        ) : (
+                          <Text style={styles.warningText}>
+                            {' · '}⚠️ sem alerta de vencimento
+                          </Text>
+                        )}
+                      </Text>
+                    </View>
+                    <View style={styles.productActions}>
+                      <TouchableOpacity
+                        style={styles.editBtn}
+                        onPress={() => setEditTarget(p)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.editBtnText}>Editar</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.deleteBtn}
+                        onPress={() => setDeleteTarget(p)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.deleteBtnText}>Excluir</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })
+            )
+          ) : null}
+        </View>
       </ScrollView>
 
-      <TouchableOpacity style={styles.fab} onPress={openNew} activeOpacity={0.85}>
-        <Ionicons name="add" size={30} color={colors.text} />
-      </TouchableOpacity>
+      {/* Picker de unidade */}
+      <Modal
+        visible={unidadePickerOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setUnidadePickerOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.pickerBackdrop}
+          activeOpacity={1}
+          onPress={() => setUnidadePickerOpen(false)}
+        >
+          <View style={styles.pickerCard}>
+            <Text style={styles.pickerTitle}>Selecionar unidade</Text>
+            {UNIDADES.map((u) => {
+              const active = u === unidade;
+              return (
+                <TouchableOpacity
+                  key={u}
+                  style={[styles.pickerOption, active && styles.pickerOptionActive]}
+                  onPress={() => {
+                    setUnidade(u);
+                    setUnidadePickerOpen(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.pickerOptionText,
+                      active && styles.pickerOptionTextActive,
+                    ]}
+                  >
+                    {u}
+                  </Text>
+                  {active ? (
+                    <Ionicons name="checkmark" size={18} color={colors.accent} />
+                  ) : null}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       <ProductFormModal
-        visible={formVisible}
-        produto={editing}
+        visible={!!editTarget}
+        produto={editTarget}
         userId={userId}
         empresaId={empresaId}
-        onClose={closeForm}
+        onClose={() => setEditTarget(null)}
         onSaved={handleSaved}
       />
 
@@ -362,6 +596,7 @@ function ProductFormModal({ visible, produto, userId, empresaId, onClose, onSave
   const [validade, setValidade] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
@@ -448,45 +683,48 @@ function ProductFormModal({ visible, produto, userId, empresaId, onClose, onSave
             </View>
 
             <ScrollView keyboardShouldPersistTaps="handled">
-              <Text style={styles.label}>Nome do produto</Text>
+              <Text style={styles.label}>NOME DO PRODUTO</Text>
               <TextInput
                 style={styles.input}
                 value={nome}
                 onChangeText={setNome}
-                placeholder="Ex: Pão francês"
+                placeholder="Ex: Pão Francês"
                 placeholderTextColor={colors.muted}
                 editable={!saving}
               />
 
-              <Text style={styles.label}>Unidade</Text>
-              <View style={styles.pillsRow}>
-                {UNIDADES.map((u) => {
-                  const active = u === unidade;
-                  return (
-                    <TouchableOpacity
-                      key={u}
-                      style={[styles.pill, active && styles.pillActive]}
-                      onPress={() => setUnidade(u)}
-                      disabled={saving}
-                    >
-                      <Text style={[styles.pillText, active && styles.pillTextActive]}>{u}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
+              <View style={styles.row2}>
+                <View style={styles.col}>
+                  <Text style={styles.label}>UNIDADE</Text>
+                  <TouchableOpacity
+                    style={[styles.input, styles.pickerInput]}
+                    onPress={() => setPickerOpen(true)}
+                    disabled={saving}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.pickerValue}>{unidade}</Text>
+                    <Ionicons name="chevron-down" size={16} color={colors.muted} />
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.col}>
+                  <Text style={styles.label}>
+                    CUSTO EST. (R$) <Text style={styles.optionalTag}>opcional</Text>
+                  </Text>
+                  <TextInput
+                    style={styles.input}
+                    value={custo}
+                    onChangeText={setCusto}
+                    placeholder="0,00"
+                    placeholderTextColor={colors.muted}
+                    keyboardType="decimal-pad"
+                    editable={!saving}
+                  />
+                </View>
               </View>
 
-              <Text style={styles.label}>Custo estimado (R$)</Text>
-              <TextInput
-                style={styles.input}
-                value={custo}
-                onChangeText={setCusto}
-                placeholder="0,00"
-                placeholderTextColor={colors.muted}
-                keyboardType="decimal-pad"
-                editable={!saving}
-              />
-
-              <Text style={styles.label}>Validade em dias (opcional)</Text>
+              <Text style={styles.label}>
+                VALIDADE (DIAS) <Text style={styles.optionalTag}>opcional</Text>
+              </Text>
               <TextInput
                 style={styles.input}
                 value={validade}
@@ -496,23 +734,70 @@ function ProductFormModal({ visible, produto, userId, empresaId, onClose, onSave
                 keyboardType="number-pad"
                 editable={!saving}
               />
+              <Text style={styles.helperText}>
+                Se informado, o app alertará no dia do vencimento
+              </Text>
 
               {error ? <Text style={styles.error}>{error}</Text> : null}
 
               <TouchableOpacity
-                style={[styles.saveButton, saving && styles.buttonDisabled]}
+                style={[styles.primaryBtn, saving && styles.disabled]}
                 onPress={handleSubmit}
                 disabled={saving}
               >
                 {saving ? (
-                  <ActivityIndicator color={colors.text} />
+                  <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.saveButtonText}>Salvar</Text>
+                  <Text style={styles.primaryBtnText}>
+                    {isEdit ? 'Salvar alterações' : 'Cadastrar produto'}
+                  </Text>
                 )}
               </TouchableOpacity>
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
+
+        <Modal
+          visible={pickerOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setPickerOpen(false)}
+        >
+          <TouchableOpacity
+            style={styles.pickerBackdrop}
+            activeOpacity={1}
+            onPress={() => setPickerOpen(false)}
+          >
+            <View style={styles.pickerCard}>
+              <Text style={styles.pickerTitle}>Selecionar unidade</Text>
+              {UNIDADES.map((u) => {
+                const active = u === unidade;
+                return (
+                  <TouchableOpacity
+                    key={u}
+                    style={[styles.pickerOption, active && styles.pickerOptionActive]}
+                    onPress={() => {
+                      setUnidade(u);
+                      setPickerOpen(false);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.pickerOptionText,
+                        active && styles.pickerOptionTextActive,
+                      ]}
+                    >
+                      {u}
+                    </Text>
+                    {active ? (
+                      <Ionicons name="checkmark" size={18} color={colors.accent} />
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </TouchableOpacity>
+        </Modal>
       </View>
     </Modal>
   );
@@ -545,14 +830,14 @@ function ConfirmDeleteModal({ produto, deleting, onCancel, onConfirm }) {
               <Text style={styles.cancelBtnText}>Cancelar</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.confirmBtn, styles.deleteBtn, deleting && styles.buttonDisabled]}
+              style={[styles.confirmBtn, styles.confirmDeleteBtn, deleting && styles.disabled]}
               onPress={onConfirm}
               disabled={deleting}
             >
               {deleting ? (
-                <ActivityIndicator color={colors.text} />
+                <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.deleteBtnText}>Excluir</Text>
+                <Text style={styles.confirmDeleteBtnText}>Excluir</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -635,72 +920,373 @@ function detectarFormato(rows) {
   };
 }
 
+const SERIF = Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' });
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  container: { padding: 20, paddingBottom: 100 },
+  container: { paddingBottom: 40 },
 
-  empty: { color: colors.muted, textAlign: 'center', marginTop: 40 },
-  error: { color: colors.danger, marginTop: 16, textAlign: 'center' },
-
-  importSection: { marginBottom: 16 },
-  importButton: {
+  // 1. Hero Banner
+  hero: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 12,
+    borderRadius: 16,
+    padding: 20,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
     borderWidth: 1,
-    borderColor: colors.accent,
+    borderColor: '#3a2a1a',
+  },
+  heroContent: { flex: 1, paddingRight: 12 },
+  heroEyebrow: {
+    color: colors.gold,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  heroTitle: {
+    color: colors.text,
+    fontSize: 26,
+    fontWeight: '700',
+    fontFamily: SERIF,
+    marginBottom: 6,
+  },
+  heroSubtitle: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  erpBadge: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  erpBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+
+  // Cards
+  card: {
+    backgroundColor: '#2a2a2a',
+    borderWidth: 1,
+    borderColor: '#333333',
+    borderRadius: 14,
+    padding: 16,
+    marginHorizontal: 16,
+    marginBottom: 12,
+  },
+
+  // 2. Importar
+  importRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  importTitle: {
+    color: colors.gold,
+    fontSize: 14,
+    fontWeight: '700',
+    flex: 1,
+  },
+  ghostBtn: {
+    borderWidth: 1,
+    borderColor: '#333333',
     backgroundColor: 'transparent',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 46,
+    minHeight: 38,
   },
-  importButtonText: {
-    color: colors.accent,
-    fontSize: 15,
+  ghostBtnText: {
+    color: colors.text,
+    fontSize: 13,
     fontWeight: '600',
   },
   importStatus: {
     color: colors.text,
     fontSize: 13,
-    marginTop: 8,
-    textAlign: 'center',
+    marginTop: 10,
     opacity: 0.85,
   },
 
-  card: {
+  // Section header (bolinha + título)
+  sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surfaceCard,
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
+    marginBottom: 14,
   },
-  cardNome: { color: colors.text, fontSize: 16, fontWeight: 'bold', marginBottom: 6 },
-  cardMeta: { flexDirection: 'row', flexWrap: 'wrap' },
-  metaItem: { color: colors.text, fontSize: 13, marginRight: 12, opacity: 0.9 },
-  metaLabel: { color: colors.muted },
-  cardActions: { flexDirection: 'row', alignItems: 'center' },
-  iconBtn: { padding: 6, marginLeft: 4 },
-
-  fab: {
-    position: 'absolute',
-    right: 20,
-    bottom: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+  bullet: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     backgroundColor: colors.accent,
+    marginRight: 10,
+  },
+  sectionTitle: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '700',
+    fontFamily: SERIF,
+  },
+
+  // Labels e inputs
+  label: {
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    color: colors.muted,
+    marginBottom: 5,
+    marginTop: 10,
+  },
+  optionalTag: {
+    color: colors.gold,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'lowercase',
+  },
+  input: {
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1.5,
+    borderColor: '#333333',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    fontSize: 15,
+    color: colors.text,
+  },
+  pickerInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  pickerValue: {
+    color: colors.text,
+    fontSize: 15,
+  },
+  row2: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  col: { flex: 1 },
+  helperText: {
+    color: colors.muted,
+    fontSize: 11,
+    marginTop: 5,
+    fontStyle: 'italic',
+  },
+
+  // Alert amarelo
+  alert: {
+    backgroundColor: '#2a2200',
+    borderWidth: 1,
+    borderColor: colors.gold,
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 12,
+  },
+  alertText: {
+    color: colors.gold,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+
+  // Primary button
+  primaryBtn: {
+    backgroundColor: colors.accent,
+    paddingVertical: 14,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 6,
-    elevation: 8,
+    marginTop: 18,
+  },
+  primaryBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  disabled: { opacity: 0.6 },
+
+  // Catálogo - busca
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1.5,
+    borderColor: '#333333',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    marginBottom: 14,
+  },
+  searchIcon: {
+    fontSize: 14,
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: 11,
+    fontSize: 15,
+    color: colors.text,
   },
 
+  // Colapsável
+  collapseHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+  },
+  collapseHeaderText: {
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    color: colors.muted,
+  },
+  collapseChevron: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
+  // Lista de produtos
+  productItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333333',
+  },
+  productItemLast: {
+    borderBottomWidth: 0,
+  },
+  productInfo: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  productName: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    marginBottom: 4,
+    letterSpacing: 0.3,
+  },
+  productMeta: {
+    color: colors.muted,
+    fontSize: 12,
+  },
+  warningText: {
+    color: colors.accent,
+    fontSize: 12,
+  },
+  productActions: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  editBtn: {
+    borderWidth: 1,
+    borderColor: '#333333',
+    borderRadius: 8,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+  },
+  editBtnText: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  deleteBtn: {
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: 8,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+  },
+  deleteBtnText: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+
+  empty: {
+    color: colors.muted,
+    textAlign: 'center',
+    paddingVertical: 20,
+    fontSize: 13,
+  },
+  error: {
+    color: colors.danger,
+    marginTop: 12,
+    fontSize: 13,
+  },
+
+  // Picker modal de unidade
+  pickerBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  pickerCard: {
+    width: '100%',
+    maxWidth: 320,
+    backgroundColor: '#2a2a2a',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#333333',
+    padding: 16,
+  },
+  pickerTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  pickerOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: '#333333',
+    marginBottom: 6,
+  },
+  pickerOptionActive: {
+    borderColor: colors.accent,
+  },
+  pickerOptionText: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  pickerOptionTextActive: {
+    color: colors.accent,
+  },
+
+  // Modal de edição
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
@@ -708,13 +1294,13 @@ const styles = StyleSheet.create({
   },
   modalKAV: { width: '100%' },
   modalCard: {
-    backgroundColor: colors.surfaceCard,
+    backgroundColor: '#2a2a2a',
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     padding: 20,
     maxHeight: '90%',
     borderTopWidth: 1,
-    borderTopColor: colors.border,
+    borderTopColor: '#333333',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -722,50 +1308,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 8,
   },
-  modalTitle: { color: colors.accent, fontSize: 20, fontWeight: 'bold' },
-
-  label: {
+  modalTitle: {
     color: colors.text,
-    fontSize: 14,
-    marginTop: 14,
-    marginBottom: 6,
-    opacity: 0.9,
+    fontSize: 18,
+    fontWeight: '700',
+    fontFamily: SERIF,
   },
-  input: {
-    backgroundColor: colors.surface,
-    color: colors.text,
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  pillsRow: { flexDirection: 'row', flexWrap: 'wrap' },
-  pill: {
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  pillActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  pillText: { color: colors.text, fontSize: 14, fontWeight: '600' },
-  pillTextActive: { color: colors.text },
 
-  saveButton: {
-    backgroundColor: colors.accent,
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  saveButtonText: { color: colors.text, fontSize: 16, fontWeight: 'bold' },
-  buttonDisabled: { opacity: 0.6 },
-
+  // Modal de confirmação de exclusão
   confirmBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.65)',
@@ -775,25 +1325,50 @@ const styles = StyleSheet.create({
   },
   confirmCard: {
     width: '100%',
-    backgroundColor: colors.surfaceCard,
-    borderRadius: 12,
+    backgroundColor: '#2a2a2a',
+    borderRadius: 14,
     padding: 20,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: '#333333',
   },
-  confirmTitle: { color: colors.text, fontSize: 18, fontWeight: 'bold', marginBottom: 10 },
-  confirmText: { color: colors.text, fontSize: 15, marginBottom: 20, lineHeight: 22 },
-  confirmActions: { flexDirection: 'row', justifyContent: 'flex-end' },
+  confirmTitle: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 10,
+  },
+  confirmText: {
+    color: colors.text,
+    fontSize: 15,
+    marginBottom: 20,
+    lineHeight: 22,
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
   confirmBtn: {
     paddingVertical: 10,
     paddingHorizontal: 18,
-    borderRadius: 8,
+    borderRadius: 10,
     marginLeft: 10,
     minWidth: 100,
     alignItems: 'center',
   },
-  cancelBtn: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
-  cancelBtnText: { color: colors.text, fontWeight: '600' },
-  deleteBtn: { backgroundColor: colors.danger },
-  deleteBtnText: { color: colors.text, fontWeight: 'bold' },
+  cancelBtn: {
+    borderWidth: 1,
+    borderColor: '#333333',
+    backgroundColor: 'transparent',
+  },
+  cancelBtnText: {
+    color: colors.text,
+    fontWeight: '600',
+  },
+  confirmDeleteBtn: {
+    backgroundColor: colors.accent,
+  },
+  confirmDeleteBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+  },
 });
