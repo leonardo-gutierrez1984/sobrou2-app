@@ -4,7 +4,9 @@
       "Bash(npm install *)",
       "Bash(npx expo *)",
       "Bash(npm uninstall *)",
-      "PowerShell(Get-NetTCPConnection *)"
+      "PowerShell(Get-NetTCPConnection *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }
