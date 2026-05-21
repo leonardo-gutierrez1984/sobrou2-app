@@ -397,6 +397,14 @@ export default function EquipeScreen() {
             </View>
           ) : null}
 
+          {!isAdmin ? (
+            <View style={styles.infoBox}>
+              <Text style={styles.infoBoxText}>
+                👁️ Você está no modo visualização. Apenas administradores podem adicionar ou remover membros.
+              </Text>
+            </View>
+          ) : null}
+
           {/* Card Minha Equipe */}
           <View style={styles.card}>
             <View style={styles.cardHeader}>
@@ -936,5 +944,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  infoBox: {
+    backgroundColor: '#2a2200',
+    borderWidth: 1,
+    borderColor: colors.gold,
+    borderRadius: 10,
+    padding: 14,
+    marginHorizontal: 16,
+    marginBottom: 12,
+  },
+  infoBoxText: {
+    color: colors.gold,
+    fontSize: 13,
+    lineHeight: 20,
   },
 });

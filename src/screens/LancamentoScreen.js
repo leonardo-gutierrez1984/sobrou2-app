@@ -15,40 +15,19 @@ import {
   Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../services/supabase';
 import { colors } from '../theme/colors';
 import AppHeader from '../components/AppHeader';
+import { DESTINOS, getDestinoColor, formatBRL } from '../utils/lancamentos';
 
 const SERIF = Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' });
 
 const UNIDADES = ['Un', 'Kg', 'Dz', 'L'];
 
 const DESTINO_BLUE = colors.blue;
-
-const DESTINOS = [
-  { id: 'Lixo', label: 'Lixo', emoji: '🗑️' },
-  { id: 'Doação', label: 'Doação', emoji: '💚' },
-  { id: 'Transformação', label: 'Transformação', emoji: '♻️' },
-  { id: 'Venda Resgatada', label: 'Venda Resgatada', emoji: '💰' },
-];
-
-function getDestinoColor(destino) {
-  switch (destino) {
-    case 'Lixo': return colors.accent;
-    case 'Doação': return colors.green;
-    case 'Transformação': return colors.gold;
-    case 'Venda Resgatada': return DESTINO_BLUE;
-    default: return colors.muted;
-  }
-}
-
-function formatBRL(value) {
-  const n = typeof value === 'number' ? value : parseFloat(value) || 0;
-  return `R$ ${n.toFixed(2).replace('.', ',')}`;
-}
 
 function formatTime(iso) {
   if (!iso) return '';
@@ -102,6 +81,7 @@ function isTimeoutError(err) {
 }
 
 export default function LancamentoScreen() {
+  const navigation = useNavigation();
   const [userId, setUserId] = useState(null);
   const [empresaId, setEmpresaId] = useState(null);
   const [produtos, setProdutos] = useState([]);
@@ -231,17 +211,24 @@ export default function LancamentoScreen() {
 
   const loadProdutos = async (empId = empresaId) => {
     if (!empId) return;
-    const { data, error: err } = await supabase
-      .from('produtos')
-      .select('*')
-      .eq('empresa_id', empId)
-      .order('nome', { ascending: true });
-    if (err) {
-      console.error('[Lanc] loadProdutos error:', err);
-      setProdutosError(err.message);
-    } else {
-      setProdutos(data || []);
-      setProdutosError('');
+    try {
+      const { data, error: err } = await withTimeout(
+        supabase.from('produtos').select('*').eq('empresa_id', empId).order('nome', { ascending: true }),
+        'loadProdutos'
+      );
+      if (err) {
+        console.error('[Lanc] loadProdutos error:', err);
+        setProdutosError(err.message);
+      } else {
+        setProdutos(data || []);
+        setProdutosError('');
+      }
+    } catch (err) {
+      if (isTimeoutError(err)) {
+        setProdutosError('Tempo esgotado ao carregar produtos. Verifique sua conexão.');
+      } else {
+        setProdutosError(err?.message || 'Erro ao carregar produtos.');
+      }
     }
     setLoadingProdutos(false);
   };
@@ -250,21 +237,17 @@ export default function LancamentoScreen() {
     if (!empId) return;
     setLoadingLancamentos(true);
     const hoje = new Date();
-    const inicioHoje = new Date(hoje);
-    inicioHoje.setHours(0, 0, 0, 0);
-    const fimHoje = new Date(hoje);
-    fimHoje.setHours(23, 59, 59, 999);
-    const { data, error: err } = await supabase
-      .from('lancamentos_sobras')
-      .select('*')
-      .eq('empresa_id', empId)
-      .gte('data', inicioHoje.toISOString())
-      .lte('data', fimHoje.toISOString())
-      .order('data', { ascending: false });
-    if (err) {
-      console.error('[Lanc] loadLancamentosHoje error:', err);
-    } else {
-      setLancamentosHoje(data || []);
+    const inicioHoje = new Date(hoje); inicioHoje.setHours(0, 0, 0, 0);
+    const fimHoje = new Date(hoje); fimHoje.setHours(23, 59, 59, 999);
+    try {
+      const { data, error: err } = await withTimeout(
+        supabase.from('lancamentos_sobras').select('*').eq('empresa_id', empId).gte('data', inicioHoje.toISOString()).lte('data', fimHoje.toISOString()).order('data', { ascending: false }),
+        'loadLancamentosHoje'
+      );
+      if (err) console.error('[Lanc] loadLancamentosHoje error:', err);
+      else setLancamentosHoje(data || []);
+    } catch (err) {
+      console.error('[Lanc] loadLancamentosHoje timeout/error:', err?.message);
     }
     setLoadingLancamentos(false);
   };
@@ -296,6 +279,26 @@ export default function LancamentoScreen() {
       loadPlanejamentoAmanha(empresaId);
     }, [empresaId])
   );
+
+  useEffect(() => {
+    if (sacola.length === 0) return;
+    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+      e.preventDefault();
+      Alert.alert(
+        'Sacola não confirmada',
+        'Você tem itens na sacola de venda resgatada que não foram confirmados. Deseja sair mesmo assim?',
+        [
+          { text: 'Ficar', style: 'cancel' },
+          {
+            text: 'Sair mesmo assim',
+            style: 'destructive',
+            onPress: () => navigation.dispatch(e.data.action),
+          },
+        ]
+      );
+    });
+    return unsubscribe;
+  }, [navigation, sacola.length]);
 
   const openEdit = (lanc) => {
     setEditingLanc(lanc);
@@ -340,8 +343,7 @@ export default function LancamentoScreen() {
     const { error: upErr } = await supabase
       .from('lancamentos_sobras')
       .update(payload)
-      .eq('id', editingLanc.id)
-      .eq('user_id', userId);
+      .eq('id', editingLanc.id);
     setEditSaving(false);
     if (upErr) {
       setEditError(upErr.message);
@@ -366,8 +368,7 @@ export default function LancamentoScreen() {
             const { error: delErr } = await supabase
               .from('lancamentos_sobras')
               .delete()
-              .eq('id', lanc.id)
-              .eq('user_id', userId);
+              .eq('id', lanc.id);
             if (delErr) {
               Alert.alert('Erro', delErr.message);
               return;
@@ -1305,12 +1306,12 @@ export default function LancamentoScreen() {
                   </View>
                 ) : null}
 
-                <Text style={styles.label}>Quantidade</Text>
+                <Text style={styles.sacolaSectionLabel}>Quantidade da sobra</Text>
                 <TextInput
                   style={styles.input}
                   value={sacolaQtd}
                   onChangeText={setSacolaQtd}
-                  placeholder="0"
+                  placeholder="Ex: 3"
                   placeholderTextColor={colors.muted}
                   keyboardType="decimal-pad"
                   editable={!sacolaSaving}
@@ -1326,22 +1327,22 @@ export default function LancamentoScreen() {
                 </TouchableOpacity>
 
                 <Text style={styles.sacolaSectionLabel}>Valores da venda</Text>
-                <Text style={styles.label}>Valor cheio (R$)</Text>
+                <Text style={styles.sacolaSectionLabel}>💰 Valor cheio — quanto valeria sem desconto (R$)</Text>
                 <TextInput
                   style={styles.input}
                   value={sacolaValorCheio}
                   onChangeText={setSacolaValorCheio}
-                  placeholder="0,00"
+                  placeholder="Ex: 50,00"
                   placeholderTextColor={colors.muted}
                   keyboardType="decimal-pad"
                   editable={!sacolaSaving}
                 />
-                <Text style={styles.label}>Valor recebido (R$)</Text>
+                <Text style={styles.sacolaSectionLabel}>✅ Valor recebido — quanto o cliente pagou (R$)</Text>
                 <TextInput
                   style={styles.input}
                   value={sacolaValorRecebido}
                   onChangeText={setSacolaValorRecebido}
-                  placeholder="0,00"
+                  placeholder="Ex: 25,00"
                   placeholderTextColor={colors.muted}
                   keyboardType="decimal-pad"
                   editable={!sacolaSaving}

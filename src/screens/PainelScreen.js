@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
@@ -22,6 +23,7 @@ import * as Print from 'expo-print';
 import { supabase } from '../services/supabase';
 import { colors } from '../theme/colors';
 import AppHeader from '../components/AppHeader';
+import { formatBRL } from '../utils/lancamentos';
 
 const SERIF = Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' });
 
@@ -33,11 +35,6 @@ const DESTINOS = [
 ];
 
 const DESTINO_OPTIONS = ['Todos', ...DESTINOS.map((d) => d.id)];
-
-function formatBRL(value) {
-  const n = typeof value === 'number' ? value : parseFloat(value) || 0;
-  return `R$ ${n.toFixed(2).replace('.', ',')}`;
-}
 
 function formatDateTime(iso) {
   if (!iso) return '';
@@ -247,11 +244,12 @@ export default function PainelScreen() {
     }
   };
 
-  useEffect(() => {
-    if (!empresaId) return;
-    carregarPainel();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [empresaId]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!empresaId) return;
+      carregarPainel();
+    }, [empresaId])
+  );
 
   // Filtros em tempo real (produto + destino)
   const lancamentosFiltrados = useMemo(() => {

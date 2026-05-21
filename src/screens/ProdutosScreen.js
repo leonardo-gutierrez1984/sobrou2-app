@@ -23,6 +23,7 @@ import AppHeader from '../components/AppHeader';
 
 const UNIDADES = ['Un', 'Kg', 'Dz', 'L'];
 const IMPORT_BATCH_SIZE = 50;
+const IMPORT_MAX_PRODUTOS = 500;
 const FAKE_ERP_COST = 13.16;
 
 export default function ProdutosScreen() {
@@ -278,6 +279,11 @@ export default function ProdutosScreen() {
 
     if (produtosToImport.length === 0) {
       setImportStatus('❌ Nenhum produto encontrado');
+      setImporting(false);
+      return;
+    }
+    if (produtosToImport.length > IMPORT_MAX_PRODUTOS) {
+      setImportStatus(`❌ Arquivo com ${produtosToImport.length} produtos excede o limite de ${IMPORT_MAX_PRODUTOS}. Divida o arquivo e importe em partes.`);
       setImporting(false);
       return;
     }
