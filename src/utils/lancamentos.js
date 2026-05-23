@@ -44,5 +44,9 @@ export function getRangeForDate(date) {
   inicio.setHours(0, 0, 0, 0);
   const fim = new Date(date);
   fim.setHours(23, 59, 59, 999);
-  return { inicio, fim };
+  const offsetMs = inicio.getTimezoneOffset() * 60 * 1000;
+  return {
+    inicio: new Date(inicio.getTime() - offsetMs),
+    fim: new Date(fim.getTime() - offsetMs),
+  };
 }

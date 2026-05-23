@@ -450,7 +450,7 @@ export default function ProdutosScreen() {
           </View>
 
           <View style={styles.searchWrap}>
-            <Text style={styles.searchIcon}>🔍</Text>
+            <Ionicons name="search" size={14} color={colors.muted} style={{ marginRight: 8 }} />
             <TextInput
               style={styles.searchInput}
               value={search}
@@ -468,7 +468,11 @@ export default function ProdutosScreen() {
             <Text style={styles.collapseHeaderText}>
               PRODUTOS CADASTRADOS ({filtrados.length})
             </Text>
-            <Text style={styles.collapseChevron}>{listExpanded ? '▲' : '▼'}</Text>
+            <Ionicons
+              name={listExpanded ? 'chevron-up' : 'chevron-down'}
+              size={14}
+              color={colors.accent}
+            />
           </TouchableOpacity>
 
           {listExpanded ? (
@@ -490,7 +494,7 @@ export default function ProdutosScreen() {
                   >
                     <View style={styles.productInfo}>
                       <Text style={styles.productName}>
-                        {(p.nome || '').toUpperCase()}
+                        {p.nome || ''}
                       </Text>
                       <Text style={styles.productMeta}>
                         {p.unidade || '-'}
@@ -926,8 +930,6 @@ function detectarFormato(rows) {
   };
 }
 
-const SERIF = Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' });
-
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   container: { paddingBottom: 40 },
@@ -958,7 +960,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 26,
     fontWeight: '700',
-    fontFamily: SERIF,
     marginBottom: 6,
   },
   heroSubtitle: {
@@ -1047,7 +1048,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 18,
     fontWeight: '700',
-    fontFamily: SERIF,
   },
 
   // Labels e inputs
@@ -1201,7 +1201,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   warningText: {
-    color: colors.accent,
+    color: colors.gold,
     fontSize: 12,
   },
   productActions: {
@@ -1318,7 +1318,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 18,
     fontWeight: '700',
-    fontFamily: SERIF,
   },
 
   // Modal de confirmação de exclusão

@@ -20,8 +20,6 @@ import { supabase } from '../services/supabase';
 import { colors } from '../theme/colors';
 import AppHeader from '../components/AppHeader';
 
-const SERIF = Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' });
-
 const PAPEIS = [
   { id: 'operador', label: 'Operador', emoji: '🔧' },
   { id: 'admin', label: 'Admin', emoji: '👑' },
@@ -364,14 +362,17 @@ export default function EquipeScreen() {
         >
           {/* Header compacto da tela */}
           <View style={styles.screenHeader}>
-            <Text style={styles.screenHeaderText}>👥 Equipe e permissões</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Ionicons name="people-outline" size={18} color={colors.text} style={{ marginRight: 8 }} />
+              <Text style={styles.screenHeaderText}>Equipe e permissões</Text>
+            </View>
           </View>
 
           {/* Card Nome da Empresa */}
           {isAdmin ? (
             <View style={styles.card}>
               <View style={styles.cardHeader}>
-                <Text style={styles.cardHeaderEmoji}>🏪</Text>
+                <Ionicons name="storefront-outline" size={18} color={colors.gold} style={{ marginRight: 8 }} />
                 <Text style={styles.cardHeaderTitle}>Nome da Empresa</Text>
               </View>
               <TextInput
@@ -408,7 +409,7 @@ export default function EquipeScreen() {
           {/* Card Minha Equipe */}
           <View style={styles.card}>
             <View style={styles.cardHeader}>
-              <Text style={styles.cardHeaderEmoji}>👥</Text>
+              <Ionicons name="people-outline" size={18} color={colors.accent} style={{ marginRight: 8 }} />
               <Text style={styles.cardHeaderTitle}>Minha Equipe</Text>
             </View>
 
@@ -442,7 +443,10 @@ export default function EquipeScreen() {
                           onPress={() => openEditMembro(m)}
                           activeOpacity={0.7}
                         >
-                          <Text style={styles.editBtnText}>✏️ Nome</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <Ionicons name="pencil-outline" size={13} color={colors.text} />
+                            <Text style={styles.editBtnText}>Nome</Text>
+                          </View>
                         </TouchableOpacity>
                         {!isSelf ? (
                           <TouchableOpacity
@@ -465,7 +469,7 @@ export default function EquipeScreen() {
           {isAdmin ? (
             <View style={styles.card}>
               <View style={styles.cardHeader}>
-                <Text style={styles.cardHeaderEmoji}>✉️</Text>
+                <Ionicons name="mail-outline" size={18} color={colors.accent} style={{ marginRight: 8 }} />
                 <Text style={styles.cardHeaderTitle}>Adicionar Membro</Text>
               </View>
 
@@ -509,7 +513,7 @@ export default function EquipeScreen() {
                 {inviting ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.primaryBtnText}>✅ Adicionar à equipe</Text>
+                  <Text style={styles.primaryBtnText}>Adicionar à equipe</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -680,7 +684,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 18,
     fontWeight: '700',
-    fontFamily: SERIF,
   },
 
   // Inputs / labels
@@ -883,7 +886,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 18,
     fontWeight: '700',
-    fontFamily: SERIF,
   },
   modalEmail: {
     color: colors.muted,

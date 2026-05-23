@@ -378,7 +378,10 @@ export default function InicioScreen() {
 
         {/* Ações rápidas */}
         <View style={styles.acoesCard}>
-          <Text style={styles.acoesTitle}>🔴 Ações rápidas</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+            <Ionicons name="flash" size={16} color={colors.accent} style={{ marginRight: 6 }} />
+            <Text style={styles.acoesTitle}>Ações rápidas</Text>
+          </View>
           <View style={styles.acoesRow}>
             <TouchableOpacity
               style={styles.acaoPrimary}
@@ -413,7 +416,10 @@ export default function InicioScreen() {
           </View>
         </View>
         <View style={styles.statCardLarge}>
-          <Text style={styles.statLabel}>💰 VALOR RECUPERADO HOJE</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+            <Ionicons name="cash-outline" size={12} color={colors.muted} style={{ marginRight: 4 }} />
+            <Text style={styles.statLabel}>VALOR RECUPERADO HOJE</Text>
+          </View>
           <Text style={[styles.statValueLarge, { color: colors.gold }]}>
             {formatBRL(totals.recuperado)}
           </Text>
@@ -422,7 +428,10 @@ export default function InicioScreen() {
 
         {/* Lançamentos */}
         <View style={styles.lancHeaderRow}>
-          <Text style={styles.lancHeaderTitle}>🔴 Lançamentos</Text>
+          <View style={[styles.lancHeaderTitle, { flexDirection: 'row', alignItems: 'center' }]}>
+            <Ionicons name="list" size={16} color={colors.accent} style={{ marginRight: 6 }} />
+            <Text style={{ color: colors.text, fontSize: 16, fontWeight: '700' }}>Lançamentos</Text>
+          </View>
           <View style={styles.lancHeaderActions}>
             {!isHoje ? (
               <>
@@ -510,7 +519,7 @@ export default function InicioScreen() {
                       hitSlop={8}
                       style={styles.iconBtn}
                     >
-                      <Ionicons name="trash-outline" size={18} color={colors.accent} />
+                      <Ionicons name="trash-outline" size={18} color={colors.danger} />
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -523,11 +532,16 @@ export default function InicioScreen() {
                 onPress={() => setVerTodos((v) => !v)}
                 activeOpacity={0.7}
               >
-                <Text style={styles.verTodosText}>
-                  {verTodos
-                    ? 'Mostrar menos ▲'
-                    : `Ver todos ${lancamentos.length} lançamentos ▼`}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Text style={styles.verTodosText}>
+                    {verTodos ? 'Mostrar menos' : `Ver todos ${lancamentos.length} lançamentos`}
+                  </Text>
+                  <Ionicons
+                    name={verTodos ? 'chevron-up' : 'chevron-down'}
+                    size={14}
+                    color={colors.accent}
+                  />
+                </View>
               </TouchableOpacity>
             ) : null}
           </View>
@@ -801,7 +815,6 @@ const styles = StyleSheet.create({
     color: '#fdfaf4',
     fontSize: 16,
     fontWeight: '700',
-    marginBottom: 12,
   },
   acoesRow: {
     flexDirection: 'row',

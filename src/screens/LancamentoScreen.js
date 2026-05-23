@@ -237,11 +237,16 @@ export default function LancamentoScreen() {
     if (!empId) return;
     setLoadingLancamentos(true);
     const hoje = new Date();
-    const inicioHoje = new Date(hoje); inicioHoje.setHours(0, 0, 0, 0);
-    const fimHoje = new Date(hoje); fimHoje.setHours(23, 59, 59, 999);
+    const inicioHoje = new Date(hoje);
+    inicioHoje.setHours(0, 0, 0, 0);
+    const fimHoje = new Date(hoje);
+    fimHoje.setHours(23, 59, 59, 999);
+    const offsetMs = inicioHoje.getTimezoneOffset() * 60 * 1000;
+    const inicioUTC = new Date(inicioHoje.getTime() - offsetMs);
+    const fimUTC = new Date(fimHoje.getTime() - offsetMs);
     try {
       const { data, error: err } = await withTimeout(
-        supabase.from('lancamentos_sobras').select('*').eq('empresa_id', empId).gte('data', inicioHoje.toISOString()).lte('data', fimHoje.toISOString()).order('data', { ascending: false }),
+        supabase.from('lancamentos_sobras').select('*').eq('empresa_id', empId).gte('data', inicioUTC.toISOString()).lte('data', fimUTC.toISOString()).order('data', { ascending: false }),
         'loadLancamentosHoje'
       );
       if (err) console.error('[Lanc] loadLancamentosHoje error:', err);
@@ -1220,7 +1225,7 @@ export default function LancamentoScreen() {
                 <Ionicons
                   name={sacolaVisible ? 'chevron-up' : 'chevron-down'}
                   size={20}
-                  color="#1c1811"
+                  color={colors.muted}
                 />
               </TouchableOpacity>
             </View>
@@ -1384,7 +1389,7 @@ export default function LancamentoScreen() {
                 <Ionicons
                   name={planejVisible ? 'chevron-up' : 'chevron-down'}
                   size={20}
-                  color="#1c1811"
+                  color={colors.muted}
                 />
               </View>
             </TouchableOpacity>
@@ -1786,16 +1791,16 @@ function LancRow({ lanc, onEdit, onDelete }) {
   );
 }
 
-const ACOES_BG = '#fdfaf4';
-const ACOES_TEXT = '#1c1811';
-const ACOES_MUTED = '#8c7f6e';
-const ACOES_BORDER = '#e2d9c8';
-const ACOES_INPUT_BG = '#ffffff';
+const ACOES_BG = colors.surface;
+const ACOES_TEXT = colors.text;
+const ACOES_MUTED = colors.muted;
+const ACOES_BORDER = colors.border;
+const ACOES_INPUT_BG = colors.bg;
 
 const DESTINO_PALETTE = {
-  Lixo: { bg: '#fef0ed', border: '#e05c2a' },
-  'Doação': { bg: '#edf7f2', border: '#2d7a4f' },
-  'Transformação': { bg: '#fef8ec', border: '#f5c842' },
+  Lixo: { bg: '#2a1a14', border: '#e05c2a' },
+  'Doação': { bg: '#142214', border: '#2d7a4f' },
+  'Transformação': { bg: '#2a2200', border: '#f5c842' },
 };
 
 const styles = StyleSheet.create({
@@ -1851,7 +1856,7 @@ const styles = StyleSheet.create({
 
   stepsRow: { gap: 8, paddingBottom: 4, paddingRight: 10, marginBottom: 14 },
   stepCard: {
-    backgroundColor: ACOES_BG,
+    backgroundColor: colors.surfaceCard,
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 14,
@@ -1867,7 +1872,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   stepLabel: {
-    color: ACOES_TEXT,
+    color: colors.text,
     fontSize: 13,
     fontWeight: '700',
     marginTop: 4,
@@ -2470,13 +2475,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: ACOES_TEXT,
+    backgroundColor: colors.accent,
     paddingVertical: 12,
     borderRadius: 10,
     marginTop: 12,
   },
   addSacolaBtnText: {
-    color: '#fdfaf4',
+    color: colors.text,
     fontWeight: '700',
     marginLeft: 6,
   },

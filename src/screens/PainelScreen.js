@@ -25,8 +25,6 @@ import { colors } from '../theme/colors';
 import AppHeader from '../components/AppHeader';
 import { formatBRL } from '../utils/lancamentos';
 
-const SERIF = Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' });
-
 const DESTINOS = [
   { id: 'Lixo', emoji: '🗑️', color: colors.accent },
   { id: 'Doação', emoji: '💚', color: colors.green },
@@ -951,7 +949,7 @@ export default function PainelScreen() {
                 activeOpacity={0.7}
               >
                 <Text style={styles.dateValue}>{fmtDateBR(dataInicio)}</Text>
-                <Text style={styles.dateIcon}>📅</Text>
+                <Ionicons name="calendar-outline" size={16} color={colors.muted} />
               </TouchableOpacity>
             </View>
             <View style={styles.col}>
@@ -962,7 +960,7 @@ export default function PainelScreen() {
                 activeOpacity={0.7}
               >
                 <Text style={styles.dateValue}>{fmtDateBR(dataFim)}</Text>
-                <Text style={styles.dateIcon}>📅</Text>
+                <Ionicons name="calendar-outline" size={16} color={colors.muted} />
               </TouchableOpacity>
             </View>
           </View>
@@ -977,7 +975,7 @@ export default function PainelScreen() {
               {loading ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.primaryBtnText}>Buscar</Text>
+                <Text style={styles.primaryBtnText}>Aplicar filtros</Text>
               )}
             </TouchableOpacity>
             <TouchableOpacity
@@ -1008,7 +1006,7 @@ export default function PainelScreen() {
 
           <View style={[styles.row2, { marginTop: 12 }]}>
             <View style={[styles.col, styles.searchWrap]}>
-              <Text style={styles.searchIcon}>🔍</Text>
+              <Ionicons name="search" size={14} color={colors.muted} style={{ marginRight: 6 }} />
               <TextInput
                 style={styles.searchInput}
                 value={searchProduto}
@@ -1104,7 +1102,10 @@ export default function PainelScreen() {
         </View>
 
         <View style={styles.statCardFull}>
-          <Text style={styles.statLabel}>💰 VALOR RECUPERADO</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+            <Ionicons name="cash-outline" size={12} color={colors.muted} style={{ marginRight: 4 }} />
+            <Text style={styles.statLabel}>VALOR RECUPERADO</Text>
+          </View>
           <Text style={[styles.statValueBig, { color: colors.gold }]}>
             {formatBRL(totals.recuperado)}
           </Text>
@@ -1240,9 +1241,13 @@ export default function PainelScreen() {
               activeOpacity={0.7}
             >
               <Text style={styles.collapseTitle}>
-                📋 Detalhe por Produto — Perdas ({detalheProdutos.length})
+                Detalhe por Produto — Perdas ({detalheProdutos.length})
               </Text>
-              <Text style={styles.collapseArrow}>{detalheExpanded ? '▲' : '▼'}</Text>
+              <Ionicons
+                name={detalheExpanded ? 'chevron-up' : 'chevron-down'}
+                size={16}
+                color={colors.accent}
+              />
             </TouchableOpacity>
 
             {detalheExpanded ? (
@@ -1325,11 +1330,16 @@ export default function PainelScreen() {
                     onPress={() => setDetalheVerTodos((v) => !v)}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.verTodosText}>
-                      {detalheVerTodos
-                        ? 'Mostrar menos ▲'
-                        : `Ver todos ${detalheProdutos.length} produtos ▼`}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <Text style={styles.verTodosText}>
+                        {detalheVerTodos ? 'Mostrar menos' : `Ver todos ${detalheProdutos.length} produtos`}
+                      </Text>
+                      <Ionicons
+                        name={detalheVerTodos ? 'chevron-up' : 'chevron-down'}
+                        size={14}
+                        color={colors.accent}
+                      />
+                    </View>
                   </TouchableOpacity>
                 ) : null}
               </View>
@@ -1347,7 +1357,11 @@ export default function PainelScreen() {
             <Text style={styles.lancamentosTitle}>
               Lançamentos ({lancamentosFiltrados.length})
             </Text>
-            <Text style={styles.collapseArrow}>{lancamentosExpanded ? '▲' : '▼'}</Text>
+            <Ionicons
+              name={lancamentosExpanded ? 'chevron-up' : 'chevron-down'}
+              size={16}
+              color={colors.accent}
+            />
           </TouchableOpacity>
 
           {lancamentosExpanded ? (
@@ -1554,7 +1568,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 26,
     fontWeight: '700',
-    fontFamily: SERIF,
     marginBottom: 6,
   },
   heroSubtitle: {
@@ -1741,7 +1754,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 24,
     fontWeight: '700',
-    fontFamily: SERIF,
   },
   statSub: {
     color: colors.muted,
@@ -1787,7 +1799,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 18,
     fontWeight: '700',
-    fontFamily: SERIF,
   },
 
   // 5. Ranking
@@ -1902,7 +1913,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 15,
     fontWeight: '700',
-    fontFamily: SERIF,
     flex: 1,
   },
   collapseArrow: {
@@ -1982,7 +1992,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 18,
     fontWeight: '700',
-    fontFamily: SERIF,
     flex: 1,
   },
   itemCard: {

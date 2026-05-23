@@ -9,5 +9,6 @@ export const colors = {
   gold: '#f5c842',
   green: '#2d7a4f',
   blue: '#3b82f6',
-  danger: '#e05c2a',
+  danger: '#c2422a',
+  accentSoft: '#2a2200',
 };
