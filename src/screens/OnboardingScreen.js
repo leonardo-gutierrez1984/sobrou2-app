@@ -28,43 +28,25 @@ export default function OnboardingScreen({ onComplete }) {
           data: { session },
         } = await supabase.auth.getSession();
 
-        const email = session?.user?.email;
-        const uid = session?.user?.id;
-        if (!email || !uid) {
+        if (!session?.user) {
           if (mounted) setChecking(false);
           return;
         }
 
-        // 1) Busca TODAS as linhas em membros com este email
-        const { data: rows, error: memErr } = await supabase
-          .from('membros')
-          .select('id, empresa_id, user_id, papel')
-          .eq('email', email);
+        // 1) Tenta vincular convite via RPC (bypassa RLS)
+        const { data: vinculou, error: rpcErr } = await supabase
+          .rpc('vincular_convite');
 
         if (!mounted) return;
 
-        if (memErr) {
-          console.warn('[Onboarding] verificação de membro falhou:', memErr.message);
+        if (rpcErr) {
+          console.warn('[Onboarding] vincular_convite falhou:', rpcErr.message);
           setChecking(false);
           return;
         }
 
-        if (rows && rows.length > 0) {
-          // 2) Atualiza user_id nas linhas que ainda não têm
-          const semUserId = rows.filter((r) => !r.user_id);
-          if (semUserId.length > 0) {
-            const ids = semUserId.map((r) => r.id);
-            const { error: updErr } = await supabase
-              .from('membros')
-              .update({ user_id: uid })
-              .in('id', ids);
-            if (updErr) {
-              console.warn('[Onboarding] atualizar user_id falhou:', updErr.message);
-              if (mounted) setChecking(false);
-              return;
-            }
-          }
-          // 3) Convite vinculado — pula a criação de empresa
+        if (vinculou) {
+          // Convite encontrado e vinculado — pula criação de empresa
           onComplete?.();
           return;
         }
@@ -102,29 +84,14 @@ export default function OnboardingScreen({ onComplete }) {
       return;
     }
 
-    const { data: empData, error: empErr } = await supabase
-      .from('empresas')
-      .insert({ nome: nomeTrim, dono_id: user.id })
-      .select()
-      .single();
-
-    if (empErr) {
-      setLoading(false);
-      setError(empErr.message);
-      return;
-    }
-
-    const { error: memErr } = await supabase.from('membros').insert({
-      empresa_id: empData.id,
-      user_id: user.id,
-      email: user.email,
-      papel: 'admin',
-    });
+    const { data: rpcData, error: rpcErr } = await supabase
+      .rpc('criar_empresa', { nome_empresa: nomeTrim });
 
     setLoading(false);
 
-    if (memErr) {
-      setError(memErr.message);
+    if (rpcErr) {
+      console.log('[Onboarding] rpcErr completo:', JSON.stringify(rpcErr));
+      setError(rpcErr.message);
       return;
     }
 

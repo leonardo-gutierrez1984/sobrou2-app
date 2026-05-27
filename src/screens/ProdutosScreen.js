@@ -282,11 +282,7 @@ export default function ProdutosScreen() {
       setImporting(false);
       return;
     }
-    if (produtosToImport.length > IMPORT_MAX_PRODUTOS) {
-      setImportStatus(`❌ Arquivo com ${produtosToImport.length} produtos excede o limite de ${IMPORT_MAX_PRODUTOS}. Divida o arquivo e importe em partes.`);
-      setImporting(false);
-      return;
-    }
+    // sem limite — importa tudo
 
     let inserted = 0;
     let errors = 0;
@@ -883,7 +879,7 @@ function detectarFormato(rows) {
     const textCells = row.filter(
       (c) => typeof c === 'string' && c.trim().length > 0
     );
-    if (textCells.length >= 3) {
+    if (textCells.length >= 2) {
       headerIdx = i;
       break;
     }
@@ -891,9 +887,10 @@ function detectarFormato(rows) {
   if (headerIdx === -1) return null;
 
   const headers = (rows[headerIdx] || []).map((h) =>
-    typeof h === 'string' ? h.toUpperCase().trim() : ''
+    typeof h === 'string' ? h.toUpperCase().trim().normalize('NFD').replace(/[̀-ͯ]/g, '') : ''
   );
 
+  // Detecta Allfood
   const hasDescri = headers.some((h) => h.includes('DESCRI'));
   const hasIntern = headers.some((h) => h.includes('INTERN'));
   const hasUnVenda = headers.some((h) => h.includes('UN') && h.includes('VENDA'));
@@ -908,15 +905,44 @@ function detectarFormato(rows) {
     unidadeIdx = headers.findIndex((h) => h.includes('UN') && h.includes('VENDA'));
     custoIdx = headers.findIndex((h) => h.includes('CUSTO'));
   } else {
-    nomeIdx = headers.findIndex(
-      (h) => h === 'NOME' || h.includes('DESCRI') || h.includes('PRODUTO')
+    // Busca coluna de nome com variações amplas
+    nomeIdx = headers.findIndex((h) =>
+      h === 'NOME' ||
+      h === 'PRODUTO' ||
+      h === 'DESCRICAO' ||
+      h === 'DESCR' ||
+      h === 'ITEM' ||
+      h === 'MERCADORIA' ||
+      h === 'MATERIAL' ||
+      h.includes('DESCRI') ||
+      h.includes('PRODUTO') ||
+      h.includes('NOME')
     );
-    unidadeIdx = headers.findIndex(
-      (h) => h.includes('UNIDADE') || h.includes('UNID') || h === 'UN'
+    // Busca coluna de unidade com variações amplas
+    unidadeIdx = headers.findIndex((h) =>
+      h === 'UN' ||
+      h === 'UND' ||
+      h === 'UNID' ||
+      h === 'UNIDADE' ||
+      h === 'UNIDADES' ||
+      h === 'UNIT' ||
+      h.includes('UNID') ||
+      h.includes('MEDIDA')
     );
-    custoIdx = headers.findIndex(
-      (h) => h.includes('CUSTO') || h.includes('PRECO') || h.includes('PREÇO')
+    // Busca coluna de custo com variações amplas
+    custoIdx = headers.findIndex((h) =>
+      h.includes('CUSTO') ||
+      h.includes('PRECO') ||
+      h.includes('PRECO') ||
+      h.includes('VALOR') ||
+      h.includes('VLR') ||
+      h.includes('PRICE')
     );
+  }
+
+  // Se não achou coluna de nome, tenta pegar a primeira coluna com texto
+  if (nomeIdx === -1) {
+    nomeIdx = headers.findIndex((h) => h.length > 0);
   }
 
   if (nomeIdx === -1) return null;
@@ -925,8 +951,8 @@ function detectarFormato(rows) {
     formato: isAllfood ? 'allfood' : 'generico',
     headerIdx,
     nomeIdx,
-    unidadeIdx,
-    custoIdx,
+    unidadeIdx: unidadeIdx === -1 ? -1 : unidadeIdx,
+    custoIdx: custoIdx === -1 ? -1 : custoIdx,
   };
 }
 
