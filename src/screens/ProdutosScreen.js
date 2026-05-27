@@ -29,6 +29,8 @@ const FAKE_ERP_COST = 13.16;
 export default function ProdutosScreen() {
   const [userId, setUserId] = useState(null);
   const [empresaId, setEmpresaId] = useState(null);
+  const [papelAtual, setPapelAtual] = useState(null);
+  const isAdmin = papelAtual === 'admin';
 
   const [produtos, setProdutos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -53,6 +55,9 @@ export default function ProdutosScreen() {
   // Importação
   const [importing, setImporting] = useState(false);
   const [importStatus, setImportStatus] = useState('');
+  const [deleteAllVisible, setDeleteAllVisible] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
+  const [deleteAllConfirm, setDeleteAllConfirm] = useState('');
 
   // Catálogo
   const [search, setSearch] = useState('');
@@ -72,7 +77,7 @@ export default function ProdutosScreen() {
 
       const { data: membro, error: membroErr } = await supabase
         .from('membros')
-        .select('empresa_id')
+        .select('empresa_id, papel')
         .eq('user_id', user.id)
         .limit(1)
         .maybeSingle();
@@ -89,6 +94,7 @@ export default function ProdutosScreen() {
         return;
       }
       setEmpresaId(membro.empresa_id);
+      setPapelAtual(membro.papel || null);
     })();
     return () => {
       mounted = false;
@@ -183,6 +189,25 @@ export default function ProdutosScreen() {
     }
   };
 
+  const handleDeleteAll = async () => {
+    if (!isAdmin) return;
+    if (deleteAllConfirm.trim().toUpperCase() !== 'APAGAR') return;
+    setDeletingAll(true);
+    const { error } = await supabase
+      .from('produtos')
+      .delete()
+      .eq('empresa_id', empresaId);
+    setDeletingAll(false);
+    if (error) {
+      setImportStatus('❌ Erro ao apagar: ' + error.message);
+    } else {
+      setDeleteAllVisible(false);
+      setDeleteAllConfirm('');
+      setImportStatus('✅ Todos os produtos foram apagados');
+      if (empresaId) await loadProdutos(empresaId);
+    }
+  };
+
   const handleImportXLSX = async () => {
     if (importing) return;
     if (!empresaId || !userId) {
@@ -233,6 +258,8 @@ export default function ProdutosScreen() {
     }
 
     const headerInfo = detectarFormato(rows);
+    console.log('[Import] rows[0..10]:', JSON.stringify(rows.slice(0, 10)));
+    console.log('[Import] headerInfo:', JSON.stringify(headerInfo));
     if (!headerInfo) {
       setImportStatus('❌ Formato não reconhecido');
       setImporting(false);
@@ -354,6 +381,15 @@ export default function ProdutosScreen() {
             </TouchableOpacity>
           </View>
           {importStatus ? <Text style={styles.importStatus}>{importStatus}</Text> : null}
+          {isAdmin ? (
+            <TouchableOpacity
+              style={styles.deleteAllBtn}
+              onPress={() => { setDeleteAllVisible(true); setDeleteAllConfirm(''); }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.deleteAllBtnText}>Apagar todos os produtos</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         {/* 3. Card Novo produto */}
@@ -573,6 +609,56 @@ export default function ProdutosScreen() {
             })}
           </View>
         </TouchableOpacity>
+      </Modal>
+
+      <Modal
+        visible={deleteAllVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDeleteAllVisible(false)}
+      >
+        <View style={styles.confirmBackdrop}>
+          <View style={styles.confirmCard}>
+            <Text style={styles.confirmTitle}>Apagar todos os produtos</Text>
+            <Text style={styles.confirmText}>
+              Esta ação é irreversível. Todos os produtos da empresa serão apagados permanentemente.{'\n\n'}
+              Digite <Text style={{ color: colors.danger, fontWeight: 'bold' }}>APAGAR</Text> para confirmar:
+            </Text>
+            <TextInput
+              style={[styles.input, { marginBottom: 16 }]}
+              value={deleteAllConfirm}
+              onChangeText={setDeleteAllConfirm}
+              placeholder="Digite APAGAR"
+              placeholderTextColor={colors.muted}
+              autoCapitalize="characters"
+              editable={!deletingAll}
+            />
+            <View style={styles.confirmActions}>
+              <TouchableOpacity
+                style={[styles.confirmBtn, styles.cancelBtn]}
+                onPress={() => setDeleteAllVisible(false)}
+                disabled={deletingAll}
+              >
+                <Text style={styles.cancelBtnText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.confirmBtn,
+                  styles.confirmDeleteBtn,
+                  (deletingAll || deleteAllConfirm.trim().toUpperCase() !== 'APAGAR') && styles.disabled
+                ]}
+                onPress={handleDeleteAll}
+                disabled={deletingAll || deleteAllConfirm.trim().toUpperCase() !== 'APAGAR'}
+              >
+                {deletingAll ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.confirmDeleteBtnText}>Apagar tudo</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
 
       <ProductFormModal
@@ -872,28 +958,56 @@ function normalizarUnidade(raw) {
 }
 
 function detectarFormato(rows) {
-  const maxScan = Math.min(20, rows.length);
+  const maxScan = Math.min(30, rows.length);
   let headerIdx = -1;
+
+  // Procura a linha que contém cabeçalhos de coluna reais
+  // Prioriza linhas que contenham palavras-chave de colunas conhecidas
   for (let i = 0; i < maxScan; i++) {
     const row = rows[i] || [];
-    const textCells = row.filter(
-      (c) => typeof c === 'string' && c.trim().length > 0
+    const upper = row.map((c) =>
+      typeof c === 'string'
+        ? c.toUpperCase().trim().normalize('NFD').replace(/[̀-ͯ]/g, '')
+        : ''
     );
-    if (textCells.length >= 2) {
+    const textCells = row.filter((c) => typeof c === 'string' && c.trim().length > 0);
+    if (textCells.length < 4) continue;
+
+    const hasDescri = upper.some((h) => h.includes('DESCRI'));
+    const hasNome = upper.some((h) => h === 'NOME' || h.includes('PRODUTO'));
+    const hasUnidade = upper.some((h) => h.includes('UNID') || h === 'UN' || h.includes('UN,VENDA') || h.includes('UN.VENDA'));
+    const hasCodigo = upper.some((h) => h.includes('COD') || h.includes('CED'));
+
+    if (hasDescri || hasNome || (hasUnidade && hasCodigo)) {
       headerIdx = i;
       break;
     }
   }
+
+  // Fallback: primeira linha com 3+ células de texto
+  if (headerIdx === -1) {
+    for (let i = 0; i < maxScan; i++) {
+      const row = rows[i] || [];
+      const textCells = row.filter((c) => typeof c === 'string' && c.trim().length > 0);
+      if (textCells.length >= 3) {
+        headerIdx = i;
+        break;
+      }
+    }
+  }
+
   if (headerIdx === -1) return null;
 
   const headers = (rows[headerIdx] || []).map((h) =>
-    typeof h === 'string' ? h.toUpperCase().trim().normalize('NFD').replace(/[̀-ͯ]/g, '') : ''
+    typeof h === 'string'
+      ? h.toUpperCase().trim().normalize('NFD').replace(/[̀-ͯ]/g, '')
+      : ''
   );
 
   // Detecta Allfood
   const hasDescri = headers.some((h) => h.includes('DESCRI'));
   const hasIntern = headers.some((h) => h.includes('INTERN'));
-  const hasUnVenda = headers.some((h) => h.includes('UN') && h.includes('VENDA'));
+  const hasUnVenda = headers.some((h) => h.includes('UN') && (h.includes('VENDA') || h.includes(',VENDA')));
   const isAllfood = (hasDescri && hasIntern) || hasUnVenda;
 
   let nomeIdx;
@@ -901,11 +1015,12 @@ function detectarFormato(rows) {
   let custoIdx;
 
   if (isAllfood) {
-    nomeIdx = headers.findIndex((h) => h.includes('DESCRI'));
-    unidadeIdx = headers.findIndex((h) => h.includes('UN') && h.includes('VENDA'));
+    // Allfood: DESCRIÇÃO INTERNA é o nome
+    nomeIdx = headers.findIndex((h) => h.includes('DESCRI') && h.includes('INTERN'));
+    if (nomeIdx === -1) nomeIdx = headers.findIndex((h) => h.includes('DESCRI'));
+    unidadeIdx = headers.findIndex((h) => h.includes('UN') && (h.includes('VENDA') || h.includes(',VENDA')));
     custoIdx = headers.findIndex((h) => h.includes('CUSTO'));
   } else {
-    // Busca coluna de nome com variações amplas
     nomeIdx = headers.findIndex((h) =>
       h === 'NOME' ||
       h === 'PRODUTO' ||
@@ -918,7 +1033,6 @@ function detectarFormato(rows) {
       h.includes('PRODUTO') ||
       h.includes('NOME')
     );
-    // Busca coluna de unidade com variações amplas
     unidadeIdx = headers.findIndex((h) =>
       h === 'UN' ||
       h === 'UND' ||
@@ -929,10 +1043,8 @@ function detectarFormato(rows) {
       h.includes('UNID') ||
       h.includes('MEDIDA')
     );
-    // Busca coluna de custo com variações amplas
     custoIdx = headers.findIndex((h) =>
       h.includes('CUSTO') ||
-      h.includes('PRECO') ||
       h.includes('PRECO') ||
       h.includes('VALOR') ||
       h.includes('VLR') ||
@@ -940,7 +1052,7 @@ function detectarFormato(rows) {
     );
   }
 
-  // Se não achou coluna de nome, tenta pegar a primeira coluna com texto
+  // Fallback: primeira coluna com texto
   if (nomeIdx === -1) {
     nomeIdx = headers.findIndex((h) => h.length > 0);
   }
@@ -1401,5 +1513,18 @@ const styles = StyleSheet.create({
   confirmDeleteBtnText: {
     color: '#fff',
     fontWeight: '700',
+  },
+  deleteAllBtn: {
+    marginTop: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.danger,
+    alignItems: 'center',
+  },
+  deleteAllBtnText: {
+    color: colors.danger,
+    fontSize: 13,
+    fontWeight: '600',
   },
 });

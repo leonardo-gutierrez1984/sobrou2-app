@@ -1012,10 +1012,15 @@ export default function LancamentoScreen() {
                   <Text style={styles.selectedLabel}>PRODUTO</Text>
                   <Text style={styles.selectedNome}>{selected.nome}</Text>
                 </View>
-                <TouchableOpacity onPress={resetForm} style={styles.trocarBtn}>
-                  <Ionicons name="swap-horizontal" size={18} color={colors.accent} />
-                  <Text style={styles.trocarText}>Trocar</Text>
-                </TouchableOpacity>
+                <View style={styles.trocarActions}>
+                  <TouchableOpacity onPress={resetForm} style={styles.trocarBtn}>
+                    <Ionicons name="swap-horizontal" size={18} color={colors.accent} />
+                    <Text style={styles.trocarText}>Trocar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={resetForm} style={styles.limparBtn} hitSlop={8}>
+                    <Ionicons name="close-circle" size={22} color={colors.muted} />
+                  </TouchableOpacity>
+                </View>
               </View>
 
               <Text style={styles.formLabel}>
@@ -2166,6 +2171,14 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   trocarText: { color: colors.accent, marginLeft: 4, fontWeight: '600' },
+  trocarActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  limparBtn: {
+    padding: 4,
+  },
 
   label: {
     color: colors.text,
