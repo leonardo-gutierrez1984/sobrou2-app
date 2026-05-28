@@ -178,13 +178,16 @@ export default function ProdutosScreen() {
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
+    const idParaExcluir = deleteTarget.id;
+    // Atualização otimista: remove da lista imediatamente
+    setProdutos((prev) => prev.filter((p) => p.id !== idParaExcluir));
+    setDeleteTarget(null);
     setDeleting(true);
-    const { error } = await supabase.from('produtos').delete().eq('id', deleteTarget.id);
+    const { error } = await supabase.from('produtos').delete().eq('id', idParaExcluir);
     setDeleting(false);
     if (error) {
+      // Se falhou, recarrega a lista do servidor
       setLoadError(error.message);
-    } else {
-      setDeleteTarget(null);
       if (empresaId) await loadProdutos(empresaId);
     }
   };

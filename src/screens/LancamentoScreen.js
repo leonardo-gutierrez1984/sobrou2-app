@@ -971,15 +971,13 @@ export default function LancamentoScreen() {
                 <ActivityIndicator color={colors.accent} style={{ marginTop: 24 }} />
               ) : produtosError ? (
                 <Text style={styles.error}>{produtosError}</Text>
+              ) : search.trim().length === 0 ? (
+                <Text style={styles.empty}>Digite para buscar um produto</Text>
               ) : filtered.length === 0 ? (
-                <Text style={styles.empty}>
-                  {produtos.length === 0
-                    ? 'Nenhum produto cadastrado ainda.'
-                    : 'Nenhum produto encontrado.'}
-                </Text>
+                <Text style={styles.empty}>Nenhum produto encontrado.</Text>
               ) : (
                 <View style={styles.list}>
-                  {(prodListExpanded ? filtered : filtered.slice(0, 4)).map((p) => (
+                  {(prodListExpanded ? filtered : filtered.slice(0, 6)).map((p) => (
                     <TouchableOpacity
                       key={p.id}
                       style={styles.produtoItem}
@@ -989,7 +987,7 @@ export default function LancamentoScreen() {
                       <Ionicons name="chevron-forward" size={20} color={colors.accent} />
                     </TouchableOpacity>
                   ))}
-                  {filtered.length > 4 ? (
+                  {filtered.length > 6 ? (
                     <TouchableOpacity
                       style={styles.verTodosBtn}
                       onPress={() => setProdListExpanded((v) => !v)}
@@ -998,7 +996,7 @@ export default function LancamentoScreen() {
                       <Text style={styles.verTodosText}>
                         {prodListExpanded
                           ? 'Recolher ▲'
-                          : `Ver todos os ${filtered.length} produtos ▼`}
+                          : `Ver todos os ${filtered.length} resultados ▼`}
                       </Text>
                     </TouchableOpacity>
                   ) : null}
