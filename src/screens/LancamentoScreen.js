@@ -80,6 +80,13 @@ function isTimeoutError(err) {
   return err && typeof err.message === 'string' && err.message.startsWith(TIMEOUT_TAG);
 }
 
+function normalizar(str) {
+  return (str || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '');
+}
+
 export default function LancamentoScreen() {
   const navigation = useNavigation();
   const [userId, setUserId] = useState(null);
@@ -204,9 +211,9 @@ export default function LancamentoScreen() {
   }, []);
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = normalizar(search);
     if (!q) return produtos;
-    return produtos.filter((p) => (p.nome || '').toLowerCase().includes(q));
+    return produtos.filter((p) => normalizar(p.nome).includes(q));
   }, [produtos, search]);
 
   const loadProdutos = async (empId = empresaId) => {
@@ -388,12 +395,11 @@ export default function LancamentoScreen() {
   };
 
   const sacolaProdutosFiltrados = useMemo(() => {
-    if (!sacolaInputFocused) return [];
     if (sacolaProdutoSelecionado && sacolaProdutoSelecionado.nome === sacolaBusca) return [];
-    const q = sacolaBusca.trim().toLowerCase();
-    if (!q) return produtos.slice(0, 6);
-    return produtos.filter((p) => (p.nome || '').toLowerCase().includes(q)).slice(0, 8);
-  }, [produtos, sacolaBusca, sacolaProdutoSelecionado, sacolaInputFocused]);
+    const q = normalizar(sacolaBusca);
+    if (!q) return [];
+    return produtos.filter((p) => normalizar(p.nome).includes(q)).slice(0, 8);
+  }, [produtos, sacolaBusca, sacolaProdutoSelecionado]);
 
   const handleSacolaSearchChange = (text) => {
     setSacolaBusca(text);
@@ -502,12 +508,11 @@ export default function LancamentoScreen() {
   };
 
   const planejProdutosFiltrados = useMemo(() => {
-    if (!planejInputFocused) return [];
     if (planejProduto && planejProduto.nome === planejBusca) return [];
-    const q = planejBusca.trim().toLowerCase();
-    if (!q) return produtos.slice(0, 6);
-    return produtos.filter((p) => (p.nome || '').toLowerCase().includes(q)).slice(0, 8);
-  }, [produtos, planejBusca, planejProduto, planejInputFocused]);
+    const q = normalizar(planejBusca);
+    if (!q) return [];
+    return produtos.filter((p) => normalizar(p.nome).includes(q)).slice(0, 8);
+  }, [produtos, planejBusca, planejProduto]);
 
   const handlePlanejPickProduto = (p) => {
     setPlanejProduto(p);
