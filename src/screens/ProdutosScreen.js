@@ -58,6 +58,8 @@ export default function ProdutosScreen() {
   const [deleteAllVisible, setDeleteAllVisible] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
   const [deleteAllConfirm, setDeleteAllConfirm] = useState('');
+  const [previewData, setPreviewData] = useState(null); // { rows, headerInfo, produtosToImport }
+  const [previewVisible, setPreviewVisible] = useState(false);
 
   // Catálogo
   const [search, setSearch] = useState('');
@@ -261,18 +263,13 @@ export default function ProdutosScreen() {
     }
 
     const headerInfo = detectarFormato(rows);
-    console.log('[Import] rows[0..10]:', JSON.stringify(rows.slice(0, 10)));
-    console.log('[Import] headerInfo:', JSON.stringify(headerInfo));
     if (!headerInfo) {
-      setImportStatus('❌ Formato não reconhecido');
+      setImportStatus('❌ Formato não reconhecido. Verifique se o arquivo tem colunas de nome/produto.');
       setImporting(false);
       return;
     }
 
-    setImportStatus(
-      `⏳ Formato detectado: ${headerInfo.formato === 'allfood' ? 'Allfood' : 'Padrão'}`
-    );
-
+    // Monta lista de produtos para importar
     const produtosToImport = [];
     for (let i = headerInfo.headerIdx + 1; i < rows.length; i++) {
       const row = rows[i];
@@ -308,11 +305,24 @@ export default function ProdutosScreen() {
     }
 
     if (produtosToImport.length === 0) {
-      setImportStatus('❌ Nenhum produto encontrado');
+      setImportStatus('❌ Nenhum produto encontrado no arquivo.');
       setImporting(false);
       return;
     }
-    // sem limite — importa tudo
+
+    // Mostra preview antes de confirmar
+    setPreviewData({ headerInfo, produtosToImport });
+    setPreviewVisible(true);
+    setImportStatus('');
+    setImporting(false);
+  };
+
+  const handleConfirmarImport = async () => {
+    if (!previewData) return;
+    const { produtosToImport } = previewData;
+
+    setPreviewVisible(false);
+    setImporting(true);
 
     let inserted = 0;
     let errors = 0;
@@ -331,9 +341,10 @@ export default function ProdutosScreen() {
     setImportStatus(
       errors > 0
         ? `✅ ${inserted} produtos importados (${errors} com erro)`
-        : `✅ ${inserted} produtos importados`
+        : `✅ ${inserted} produtos importados com sucesso`
     );
     setImporting(false);
+    setPreviewData(null);
     if (empresaId) await loadProdutos(empresaId);
   };
 
@@ -664,6 +675,79 @@ export default function ProdutosScreen() {
         </View>
       </Modal>
 
+      <Modal
+        visible={previewVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => { setPreviewVisible(false); setPreviewData(null); }}
+      >
+        <View style={styles.confirmBackdrop}>
+          <View style={[styles.confirmCard, { maxHeight: '80%' }]}>
+            <Text style={styles.confirmTitle}>Confirmar importação</Text>
+
+            {previewData ? (
+              <>
+                <Text style={[styles.confirmText, { marginBottom: 8 }]}>
+                  Formato detectado:{' '}
+                  <Text style={{ color: colors.gold, fontWeight: '700' }}>
+                    {previewData.headerInfo.formato === 'allfood' ? 'Allfood' : 'Genérico'}
+                  </Text>
+                  {'\n'}
+                  <Text style={{ color: colors.accent, fontWeight: '700' }}>
+                    {previewData.produtosToImport.length} produtos encontrados
+                  </Text>
+                </Text>
+
+                <Text style={[styles.label, { marginTop: 8, marginBottom: 6 }]}>
+                  PRÉVIA DOS PRIMEIROS 3 PRODUTOS:
+                </Text>
+
+                {previewData.produtosToImport.slice(0, 3).map((p, idx) => (
+                  <View
+                    key={idx}
+                    style={{
+                      backgroundColor: '#1a1a1a',
+                      borderRadius: 8,
+                      padding: 10,
+                      marginBottom: 6,
+                      borderWidth: 1,
+                      borderColor: '#333333',
+                    }}
+                  >
+                    <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>
+                      {p.nome}
+                    </Text>
+                    <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>
+                      {p.unidade}
+                      {p.custo_estimado != null ? ` · R$ ${String(p.custo_estimado).replace('.', ',')}` : ' · sem custo'}
+                    </Text>
+                  </View>
+                ))}
+
+                <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4, marginBottom: 16 }}>
+                  Se os dados acima parecerem corretos, confirme para importar todos os produtos.
+                </Text>
+              </>
+            ) : null}
+
+            <View style={styles.confirmActions}>
+              <TouchableOpacity
+                style={[styles.confirmBtn, styles.cancelBtn]}
+                onPress={() => { setPreviewVisible(false); setPreviewData(null); }}
+              >
+                <Text style={styles.cancelBtnText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmBtn, styles.confirmDeleteBtn]}
+                onPress={handleConfirmarImport}
+              >
+                <Text style={styles.confirmDeleteBtnText}>Importar tudo</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <ProductFormModal
         visible={!!editTarget}
         produto={editTarget}
@@ -964,24 +1048,45 @@ function detectarFormato(rows) {
   const maxScan = Math.min(30, rows.length);
   let headerIdx = -1;
 
-  // Procura a linha que contém cabeçalhos de coluna reais
-  // Prioriza linhas que contenham palavras-chave de colunas conhecidas
+  const normalizar = (s) =>
+    String(s || '')
+      .toUpperCase()
+      .trim()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '');
+
+  const KEYWORDS_NOME = [
+    'DESCRICAO', 'DESCR', 'NOME', 'PRODUTO', 'ITEM',
+    'MERCADORIA', 'MATERIAL', 'DENOMINACAO', 'ESPECIFICACAO',
+    'DESCRICAO DO PRODUTO', 'NOME DO PRODUTO', 'DESC',
+  ];
+  const KEYWORDS_UNIDADE = [
+    'UNIDADE', 'UNID', 'UN', 'UND', 'UNIT',
+    'UNIDADE DE MEDIDA', 'UN.VENDA', 'UN,VENDA', 'UNID.VENDA',
+    'UNIDADE VENDA', 'MEDIDA',
+  ];
+  const KEYWORDS_CUSTO = [
+    'CUSTO', 'PRECO CUSTO', 'PRECO DE CUSTO', 'CUSTO UNITARIO',
+    'CUSTO UNIT', 'VLR CUSTO', 'VALOR CUSTO', 'VALOR UNIT',
+    'VALOR UNITARIO', 'PRECO', 'VALOR', 'VLR', 'PRICE',
+    'CUSTO MEDIO', 'PRECO MEDIO', 'ULTIMO CUSTO',
+  ];
+
+  const contemKeyword = (celula, keywords) =>
+    keywords.some((k) => normalizar(celula).includes(k));
+
+  // Procura linha de cabeçalho
   for (let i = 0; i < maxScan; i++) {
     const row = rows[i] || [];
-    const upper = row.map((c) =>
-      typeof c === 'string'
-        ? c.toUpperCase().trim().normalize('NFD').replace(/[̀-ͯ]/g, '')
-        : ''
-    );
     const textCells = row.filter((c) => typeof c === 'string' && c.trim().length > 0);
-    if (textCells.length < 4) continue;
+    if (textCells.length < 2) continue;
 
-    const hasDescri = upper.some((h) => h.includes('DESCRI'));
-    const hasNome = upper.some((h) => h === 'NOME' || h.includes('PRODUTO'));
-    const hasUnidade = upper.some((h) => h.includes('UNID') || h === 'UN' || h.includes('UN,VENDA') || h.includes('UN.VENDA'));
-    const hasCodigo = upper.some((h) => h.includes('COD') || h.includes('CED'));
+    const temNome = row.some((c) => contemKeyword(c, KEYWORDS_NOME));
+    const temUnidade = row.some((c) => contemKeyword(c, KEYWORDS_UNIDADE));
+    const temCusto = row.some((c) => contemKeyword(c, KEYWORDS_CUSTO));
+    const temCodigo = row.some((c) => contemKeyword(c, ['COD', 'CODIGO', 'CED']));
 
-    if (hasDescri || hasNome || (hasUnidade && hasCodigo)) {
+    if (temNome || (temUnidade && temCodigo) || (temUnidade && temCusto)) {
       headerIdx = i;
       break;
     }
@@ -1001,61 +1106,55 @@ function detectarFormato(rows) {
 
   if (headerIdx === -1) return null;
 
-  const headers = (rows[headerIdx] || []).map((h) =>
-    typeof h === 'string'
-      ? h.toUpperCase().trim().normalize('NFD').replace(/[̀-ͯ]/g, '')
-      : ''
-  );
+  const headers = (rows[headerIdx] || []).map((h) => normalizar(h));
 
   // Detecta Allfood
-  const hasDescri = headers.some((h) => h.includes('DESCRI'));
-  const hasIntern = headers.some((h) => h.includes('INTERN'));
+  const hasDescriIntern = headers.some((h) => h.includes('DESCRI') && h.includes('INTERN'));
   const hasUnVenda = headers.some((h) => h.includes('UN') && (h.includes('VENDA') || h.includes(',VENDA')));
-  const isAllfood = (hasDescri && hasIntern) || hasUnVenda;
+  const isAllfood = hasDescriIntern || hasUnVenda;
 
-  let nomeIdx;
-  let unidadeIdx;
-  let custoIdx;
+  let nomeIdx = -1;
+  let unidadeIdx = -1;
+  let custoIdx = -1;
 
   if (isAllfood) {
-    // Allfood: DESCRIÇÃO INTERNA é o nome
     nomeIdx = headers.findIndex((h) => h.includes('DESCRI') && h.includes('INTERN'));
     if (nomeIdx === -1) nomeIdx = headers.findIndex((h) => h.includes('DESCRI'));
     unidadeIdx = headers.findIndex((h) => h.includes('UN') && (h.includes('VENDA') || h.includes(',VENDA')));
     custoIdx = headers.findIndex((h) => h.includes('CUSTO'));
   } else {
-    nomeIdx = headers.findIndex((h) =>
-      h === 'NOME' ||
-      h === 'PRODUTO' ||
-      h === 'DESCRICAO' ||
-      h === 'DESCR' ||
-      h === 'ITEM' ||
-      h === 'MERCADORIA' ||
-      h === 'MATERIAL' ||
-      h.includes('DESCRI') ||
-      h.includes('PRODUTO') ||
-      h.includes('NOME')
-    );
-    unidadeIdx = headers.findIndex((h) =>
-      h === 'UN' ||
-      h === 'UND' ||
-      h === 'UNID' ||
-      h === 'UNIDADE' ||
-      h === 'UNIDADES' ||
-      h === 'UNIT' ||
-      h.includes('UNID') ||
-      h.includes('MEDIDA')
-    );
-    custoIdx = headers.findIndex((h) =>
-      h.includes('CUSTO') ||
-      h.includes('PRECO') ||
-      h.includes('VALOR') ||
-      h.includes('VLR') ||
-      h.includes('PRICE')
-    );
+    // Nome: prioridade para match exato, depois parcial
+    const prioridadeNome = [
+      'DESCRICAO', 'NOME', 'PRODUTO', 'ITEM', 'MERCADORIA',
+      'MATERIAL', 'DENOMINACAO', 'DESC',
+    ];
+    for (const kw of prioridadeNome) {
+      nomeIdx = headers.findIndex((h) => h === kw || h.includes(kw));
+      if (nomeIdx !== -1) break;
+    }
+
+    // Unidade
+    const prioridadeUnidade = [
+      'UNIDADE', 'UNID', 'UN', 'UND', 'UNIT', 'MEDIDA',
+    ];
+    for (const kw of prioridadeUnidade) {
+      unidadeIdx = headers.findIndex((h) => h === kw || h.includes(kw));
+      if (unidadeIdx !== -1) break;
+    }
+
+    // Custo: prioriza custo sobre preço de venda
+    const prioridadeCusto = [
+      'CUSTO UNITARIO', 'CUSTO UNIT', 'CUSTO MEDIO', 'ULTIMO CUSTO',
+      'PRECO CUSTO', 'PRECO DE CUSTO', 'VLR CUSTO', 'VALOR CUSTO',
+      'CUSTO', 'VALOR UNIT', 'VALOR UNITARIO', 'PRECO', 'VALOR', 'VLR',
+    ];
+    for (const kw of prioridadeCusto) {
+      custoIdx = headers.findIndex((h) => h === kw || h.includes(kw));
+      if (custoIdx !== -1) break;
+    }
   }
 
-  // Fallback: primeira coluna com texto
+  // Fallback nome: primeira coluna com texto
   if (nomeIdx === -1) {
     nomeIdx = headers.findIndex((h) => h.length > 0);
   }
@@ -1066,8 +1165,9 @@ function detectarFormato(rows) {
     formato: isAllfood ? 'allfood' : 'generico',
     headerIdx,
     nomeIdx,
-    unidadeIdx: unidadeIdx === -1 ? -1 : unidadeIdx,
-    custoIdx: custoIdx === -1 ? -1 : custoIdx,
+    unidadeIdx,
+    custoIdx,
+    headers, // retorna os cabeçalhos para o preview
   };
 }
 
