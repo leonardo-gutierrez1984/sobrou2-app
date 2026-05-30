@@ -407,11 +407,13 @@ export default function PainelScreen() {
           prejuizo: 0,
           temCusto: false,
           destinos: {},
+          count: 0,   // ADICIONAR ESTA LINHA
         };
       }
       const g = grupos[key];
       const qtd = parseFloat(l.quantidade) || 0;
       g.quantidade += qtd;
+      g.count += 1;  // ADICIONAR ESTA LINHA
       g.destinos[l.destino] = (g.destinos[l.destino] || 0) + 1;
       const custo = parseFloat(l.produtos?.custo_estimado);
       if (!isNaN(custo) && custo > 0) {
@@ -436,6 +438,7 @@ export default function PainelScreen() {
           prejuizo: g.prejuizo,
           temCusto: g.temCusto,
           destinoMaisFrequente: destinoMais,
+          count: g.count,
         };
       })
       .sort((a, b) => {
@@ -1241,7 +1244,7 @@ export default function PainelScreen() {
               activeOpacity={0.7}
             >
               <Text style={styles.collapseTitle}>
-                Detalhe por Produto — Perdas ({detalheProdutos.length})
+                Resumo por produto ({detalheProdutos.length} itens)
               </Text>
               <Ionicons
                 name={detalheExpanded ? 'chevron-up' : 'chevron-down'}
@@ -1284,6 +1287,10 @@ export default function PainelScreen() {
                         </Text>
                         <Text style={[styles.detalheTd, styles.detalheColQtd]}>
                           {p.quantidade.toFixed(2).replace('.', ',')} {p.unidade}
+                          {'\n'}
+                          <Text style={{ color: colors.muted, fontSize: 10, marginTop: 2 }}>
+                            {p.count > 1 ? `${p.count} lançamentos` : ''}
+                          </Text>
                         </Text>
                         <Text
                           style={[
@@ -1355,7 +1362,7 @@ export default function PainelScreen() {
             activeOpacity={0.7}
           >
             <Text style={styles.lancamentosTitle}>
-              Lançamentos ({lancamentosFiltrados.length})
+              Histórico de lançamentos ({lancamentosFiltrados.length})
             </Text>
             <Ionicons
               name={lancamentosExpanded ? 'chevron-up' : 'chevron-down'}
