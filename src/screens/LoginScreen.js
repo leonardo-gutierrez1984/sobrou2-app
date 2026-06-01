@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../services/supabase';
 
 const PALETTE = {
@@ -41,6 +42,8 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const switchTab = (next) => {
     if (next === tab || loading) return;
@@ -88,6 +91,23 @@ export default function LoginScreen() {
     }
   };
 
+  const handleResetPassword = async () => {
+    setError('');
+    setInfo('');
+    if (!email.trim()) {
+      setError('Informe seu e-mail para redefinir a senha.');
+      return;
+    }
+    setLoading(true);
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim());
+    setLoading(false);
+    if (resetError) {
+      setError(translateError(resetError.message));
+      return;
+    }
+    setInfo('E-mail enviado. Verifique sua caixa de entrada para redefinir a senha.');
+  };
+
   const handleSignUp = async () => {
     setError('');
     setInfo('');
@@ -119,7 +139,7 @@ export default function LoginScreen() {
       <SafeAreaView style={styles.safe}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           <ScrollView
             contentContainerStyle={styles.scroll}
@@ -175,33 +195,69 @@ export default function LoginScreen() {
 
               <View style={styles.field}>
                 <Text style={styles.label}>Senha</Text>
-                <TextInput
-                  style={styles.input}
-                  value={password}
-                  onChangeText={setPassword}
-                  placeholder="Sua senha"
-                  placeholderTextColor={PALETTE.muted}
-                  secureTextEntry
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  editable={!loading}
-                />
-              </View>
-
-              {!isLogin ? (
-                <View style={styles.field}>
-                  <Text style={styles.label}>Confirmar senha</Text>
+                <View style={styles.passwordWrap}>
                   <TextInput
-                    style={styles.input}
-                    value={confirmPassword}
-                    onChangeText={setConfirmPassword}
-                    placeholder="Repita a senha"
+                    style={styles.passwordInput}
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="Sua senha"
                     placeholderTextColor={PALETTE.muted}
-                    secureTextEntry
+                    secureTextEntry={!showPassword}
                     autoCapitalize="none"
                     autoCorrect={false}
                     editable={!loading}
                   />
+                  <TouchableOpacity
+                    style={styles.passwordToggle}
+                    onPress={() => setShowPassword((v) => !v)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name={showPassword ? 'eye-off' : 'eye'}
+                      size={20}
+                      color={PALETTE.muted}
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {isLogin ? (
+                <TouchableOpacity
+                  onPress={handleResetPassword}
+                  disabled={loading}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.forgotPasswordText}>Esqueci minha senha</Text>
+                </TouchableOpacity>
+              ) : null}
+
+              {!isLogin ? (
+                <View style={styles.field}>
+                  <Text style={styles.label}>Confirmar senha</Text>
+                  <View style={styles.passwordWrap}>
+                    <TextInput
+                      style={styles.passwordInput}
+                      value={confirmPassword}
+                      onChangeText={setConfirmPassword}
+                      placeholder="Repita a senha"
+                      placeholderTextColor={PALETTE.muted}
+                      secureTextEntry={!showConfirmPassword}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      editable={!loading}
+                    />
+                    <TouchableOpacity
+                      style={styles.passwordToggle}
+                      onPress={() => setShowConfirmPassword((v) => !v)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons
+                        name={showConfirmPassword ? 'eye-off' : 'eye'}
+                        size={20}
+                        color={PALETTE.muted}
+                      />
+                    </TouchableOpacity>
+                  </View>
                 </View>
               ) : null}
 
@@ -350,10 +406,40 @@ const styles = StyleSheet.create({
     color: PALETTE.text,
     borderRadius: 10,
     paddingHorizontal: 14,
+    paddingRight: 44,
     paddingVertical: 12,
     fontSize: 15,
     borderWidth: 1,
     borderColor: PALETTE.border,
+  },
+  passwordWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: PALETTE.inputBg,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
+  },
+  passwordInput: {
+    flex: 1,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    color: PALETTE.text,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+  },
+  passwordToggle: {
+    position: 'absolute',
+    right: 12,
+    height: '100%',
+    justifyContent: 'center',
+  },
+  forgotPasswordText: {
+    color: PALETTE.accent,
+    fontSize: 13,
+    marginTop: 6,
+    marginBottom: 10,
   },
 
   errorBox: {

@@ -230,7 +230,7 @@ export default function LancamentoScreen() {
     if (!empId) return;
     try {
       const { data, error: err } = await withTimeout(
-        supabase.from('produtos').select('*').eq('empresa_id', empId).order('nome', { ascending: true }),
+        supabase.from('produtos').select('*').eq('empresa_id', empId).eq('arquivado', false).order('nome', { ascending: true }),
         'loadProdutos'
       );
       if (err) {
@@ -422,6 +422,7 @@ export default function LancamentoScreen() {
   };
 
   const handleAddSacolaItem = () => {
+    Keyboard.dismiss();
     setSacolaError('');
     if (!sacolaProdutoSelecionado) {
       setSacolaError('Selecione um produto.');
@@ -881,6 +882,7 @@ export default function LancamentoScreen() {
     resetForm();
     await loadLancamentosHoje();
     await loadProdutosVencendoHoje();
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
   };
 
   return (

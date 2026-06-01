@@ -10,6 +10,7 @@ import {
   Platform,
   ActivityIndicator,
   Modal,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -51,6 +52,7 @@ export default function ProdutosScreen() {
   // Exclusão
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [deletingSelected, setDeletingSelected] = useState(false);
 
   // Importação
   const [importing, setImporting] = useState(false);
@@ -64,6 +66,8 @@ export default function ProdutosScreen() {
   // Catálogo
   const [search, setSearch] = useState('');
   const [listExpanded, setListExpanded] = useState(true);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedProducts, setSelectedProducts] = useState([]);
 
   useEffect(() => {
     let mounted = true;
@@ -116,6 +120,7 @@ export default function ProdutosScreen() {
       .from('produtos')
       .select('*')
       .eq('empresa_id', empId)
+      .eq('arquivado', false)
       .order('nome', { ascending: true });
     if (!mounted) return;
     if (error) {
@@ -124,6 +129,72 @@ export default function ProdutosScreen() {
       setProdutos(data || []);
     }
     setLoading(false);
+  };
+
+  const arquivarOuExcluir = async (ids) => {
+    if (!ids || ids.length === 0) return { excluidos: 0, arquivados: 0, erro: null };
+
+    const { data: comLanc, error: lancErr } = await supabase
+      .from('lancamentos_sobras')
+      .select('produto_id')
+      .in('produto_id', ids);
+    if (lancErr) return { excluidos: 0, arquivados: 0, erro: lancErr.message };
+
+    const idsComLanc = [...new Set((comLanc || []).map((l) => l.produto_id))];
+    const idsSemLanc = ids.filter((id) => !idsComLanc.includes(id));
+
+    let excluidos = 0;
+    let arquivados = 0;
+
+    if (idsSemLanc.length > 0) {
+      const { error: delErr } = await supabase
+        .from('produtos')
+        .delete()
+        .in('id', idsSemLanc);
+      if (delErr) return { excluidos: 0, arquivados: 0, erro: delErr.message };
+      excluidos = idsSemLanc.length;
+    }
+
+    if (idsComLanc.length > 0) {
+      const { error: arqErr } = await supabase
+        .from('produtos')
+        .update({ arquivado: true })
+        .in('id', idsComLanc);
+      if (arqErr) return { excluidos, arquivados: 0, erro: arqErr.message };
+      arquivados = idsComLanc.length;
+    }
+
+    return { excluidos, arquivados, erro: null };
+  };
+
+  const montarMsgResultado = ({ excluidos, arquivados }) => {
+    const partes = [];
+    if (excluidos > 0) partes.push(`${excluidos} excluído${excluidos > 1 ? 's' : ''}`);
+    if (arquivados > 0)
+      partes.push(`${arquivados} arquivado${arquivados > 1 ? 's' : ''} (tinha lançamentos)`);
+    return partes.join(' · ');
+  };
+
+  const avisarResultado = ({ excluidos, arquivados }) => {
+    if (excluidos === 0 && arquivados === 0) return;
+    let titulo;
+    let msg;
+
+    if (arquivados > 0 && excluidos === 0) {
+      titulo = 'Produto arquivado';
+      msg =
+        arquivados === 1
+          ? 'Este produto tinha lançamentos registrados, então foi arquivado em vez de excluído. Ele sai da lista mas o histórico nos relatórios é preservado.'
+          : `${arquivados} produtos tinham lançamentos e foram arquivados. Eles saem da lista mas o histórico nos relatórios é preservado.`;
+    } else if (excluidos > 0 && arquivados === 0) {
+      titulo = 'Produto excluído';
+      msg = excluidos === 1 ? 'Produto excluído com sucesso.' : `${excluidos} produtos excluídos com sucesso.`;
+    } else {
+      titulo = 'Pronto';
+      msg = `${excluidos} excluído${excluidos > 1 ? 's' : ''} e ${arquivados} arquivado${arquivados > 1 ? 's' : ''} (tinham lançamentos). Os arquivados saem da lista mas mantêm o histórico.`;
+    }
+
+    Alert.alert(titulo, msg);
   };
 
   const resetForm = () => {
@@ -180,18 +251,19 @@ export default function ProdutosScreen() {
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    const idParaExcluir = deleteTarget.id;
-    // Atualização otimista: remove da lista imediatamente
-    setProdutos((prev) => prev.filter((p) => p.id !== idParaExcluir));
+    const idAlvo = deleteTarget.id;
+    setProdutos((prev) => prev.filter((p) => p.id !== idAlvo));
     setDeleteTarget(null);
     setDeleting(true);
-    const { error } = await supabase.from('produtos').delete().eq('id', idParaExcluir);
+    const resultado = await arquivarOuExcluir([idAlvo]);
     setDeleting(false);
-    if (error) {
-      // Se falhou, recarrega a lista do servidor
-      setLoadError(error.message);
+    if (resultado.erro) {
+      setLoadError(resultado.erro);
       if (empresaId) await loadProdutos(empresaId);
+      return;
     }
+    avisarResultado(resultado);
+    if (empresaId) await loadProdutos(empresaId);
   };
 
   const handleDeleteAll = async () => {
@@ -211,6 +283,47 @@ export default function ProdutosScreen() {
       setImportStatus('✅ Todos os produtos foram apagados');
       if (empresaId) await loadProdutos(empresaId);
     }
+  };
+
+  const toggleSelectionMode = () => {
+    setSelectionMode((prev) => {
+      if (prev) setSelectedProducts([]);
+      return !prev;
+    });
+  };
+
+  const toggleProductSelection = (productId) => {
+    setSelectedProducts((prev) =>
+      prev.includes(productId)
+        ? prev.filter((id) => id !== productId)
+        : [...prev, productId]
+    );
+  };
+
+  const handleToggleSelectAll = () => {
+    if (selectedProducts.length === filtrados.length) {
+      setSelectedProducts([]);
+    } else {
+      setSelectedProducts(filtrados.map((p) => p.id));
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedProducts.length === 0 || deletingSelected || !empresaId) return;
+    const idsAlvo = [...selectedProducts];
+    setProdutos((prev) => prev.filter((p) => !idsAlvo.includes(p.id)));
+    setDeletingSelected(true);
+    const resultado = await arquivarOuExcluir(idsAlvo);
+    setDeletingSelected(false);
+    setSelectionMode(false);
+    setSelectedProducts([]);
+    if (resultado.erro) {
+      setLoadError(resultado.erro);
+      if (empresaId) await loadProdutos(empresaId);
+      return;
+    }
+    avisarResultado(resultado);
+    if (empresaId) await loadProdutos(empresaId);
   };
 
   const handleImportXLSX = async () => {
@@ -506,20 +619,52 @@ export default function ProdutosScreen() {
             />
           </View>
 
-          <TouchableOpacity
-            style={styles.collapseHeader}
-            onPress={() => setListExpanded((v) => !v)}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.collapseHeaderText}>
-              PRODUTOS CADASTRADOS ({filtrados.length})
-            </Text>
-            <Ionicons
-              name={listExpanded ? 'chevron-up' : 'chevron-down'}
-              size={14}
-              color={colors.accent}
-            />
-          </TouchableOpacity>
+          <View style={styles.listHeaderRow}>
+            <TouchableOpacity
+              style={styles.collapseHeader}
+              onPress={() => setListExpanded((v) => !v)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.collapseHeaderText}>
+                PRODUTOS CADASTRADOS ({filtrados.length})
+              </Text>
+              <Ionicons
+                name={listExpanded ? 'chevron-up' : 'chevron-down'}
+                size={14}
+                color={colors.accent}
+              />
+            </TouchableOpacity>
+            {selectionMode ? (
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity onPress={handleToggleSelectAll} activeOpacity={0.7}>
+                  <Text style={styles.selectBarBtn}>
+                    {selectedProducts.length === filtrados.length && filtrados.length > 0
+                      ? 'Limpar todos'
+                      : 'Selecionar todos'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.selectionToggleBtn, styles.selectionToggleBtnActive]}
+                  onPress={toggleSelectionMode}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.selectionToggleText, styles.selectionToggleTextActive]}>
+                    Cancelar
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={[styles.selectionToggleBtn, selectionMode && styles.selectionToggleBtnActive]}
+                onPress={toggleSelectionMode}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.selectionToggleText, selectionMode && styles.selectionToggleTextActive]}>
+                  Selecionar
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
 
           {listExpanded ? (
             loading ? (
@@ -533,11 +678,25 @@ export default function ProdutosScreen() {
             ) : (
               filtrados.map((p, idx) => {
                 const last = idx === filtrados.length - 1;
+                const selected = selectedProducts.includes(p.id);
                 return (
                   <View
                     key={p.id}
                     style={[styles.productItem, last && styles.productItemLast]}
                   >
+                    {selectionMode ? (
+                      <TouchableOpacity
+                        style={[styles.checkbox, selected && styles.checkboxSelected]}
+                        onPress={() => toggleProductSelection(p.id)}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons
+                          name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+                          size={22}
+                          color={selected ? colors.accent : colors.muted}
+                        />
+                      </TouchableOpacity>
+                    ) : null}
                     <View style={styles.productInfo}>
                       <Text style={styles.productName}>
                         {p.nome || ''}
@@ -558,22 +717,24 @@ export default function ProdutosScreen() {
                         )}
                       </Text>
                     </View>
-                    <View style={styles.productActions}>
-                      <TouchableOpacity
-                        style={styles.editBtn}
-                        onPress={() => setEditTarget(p)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.editBtnText}>Editar</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.deleteBtn}
-                        onPress={() => setDeleteTarget(p)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.deleteBtnText}>Excluir</Text>
-                      </TouchableOpacity>
-                    </View>
+                    {!selectionMode ? (
+                      <View style={styles.productActions}>
+                        <TouchableOpacity
+                          style={styles.editBtn}
+                          onPress={() => setEditTarget(p)}
+                          activeOpacity={0.6}
+                        >
+                          <Text style={styles.editBtnText}>Editar</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.deleteBtn}
+                          onPress={() => setDeleteTarget(p)}
+                          activeOpacity={0.6}
+                        >
+                          <Text style={styles.deleteBtnText}>Excluir</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : null}
                   </View>
                 );
               })
@@ -581,8 +742,23 @@ export default function ProdutosScreen() {
           ) : null}
         </View>
       </ScrollView>
-
-      {/* Picker de unidade */}
+      {selectionMode ? (
+        <View style={styles.selectionFooter}>
+          <Text style={styles.selectionFooterText}>
+            {selectedProducts.length} produto(s) selecionado(s)
+          </Text>
+          <TouchableOpacity
+            style={[styles.deleteBtn, styles.deleteSelectedBtn, deletingSelected && styles.disabled]}
+            onPress={handleDeleteSelected}
+            disabled={deletingSelected || selectedProducts.length === 0}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.deleteBtnText}>
+              Excluir selecionados
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
       <Modal
         visible={unidadePickerOpen}
         transparent
@@ -1448,6 +1624,59 @@ const styles = StyleSheet.create({
   productActions: {
     flexDirection: 'row',
     gap: 6,
+  },
+  listHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  selectionToggleBtn: {
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: 9,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  selectionToggleBtnActive: {
+    backgroundColor: colors.accent,
+  },
+  selectionToggleText: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  selectionToggleTextActive: {
+    color: '#fff',
+  },
+  selectBarBtn: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '600',
+    alignSelf: 'center',
+  },
+  checkbox: {
+    marginRight: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxSelected: {},
+  selectionFooter: {
+    borderTopWidth: 1,
+    borderTopColor: '#333333',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    backgroundColor: '#121212',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  selectionFooterText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  deleteSelectedBtn: {
+    paddingHorizontal: 14,
   },
   editBtn: {
     borderWidth: 1,
