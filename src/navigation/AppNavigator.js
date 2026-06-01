@@ -1,12 +1,14 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import * as Linking from 'expo-linking';
 import { Ionicons } from '@expo/vector-icons';
 import InicioScreen from '../screens/InicioScreen';
 import LancamentoScreen from '../screens/LancamentoScreen';
 import PainelScreen from '../screens/PainelScreen';
 import ProdutosScreen from '../screens/ProdutosScreen';
 import EquipeScreen from '../screens/EquipeScreen';
+import ResetPasswordScreen from '../screens/ResetPasswordScreen';
 import { colors } from '../theme/colors';
 import { EmpresaProvider } from '../context/EmpresaContext';
 
@@ -17,10 +19,28 @@ const TAB_ACTIVE = '#e05c2a';
 const TAB_INACTIVE = '#8c8c8c';
 const ICONS = { Inicio: 'home-outline', Lancamento: 'add-circle-outline', Produtos: 'cube-outline', Painel: 'bar-chart-outline' };
 
-export default function AppNavigator() {
+export default function AppNavigator({ navigationRef }) {
+  const linking = {
+    prefixes: ['sobrou://'],
+    config: {
+      screens: {
+        Inicio: 'inicio',
+        Lancamento: 'lancamento',
+        Produtos: 'produtos',
+        Painel: 'painel',
+        Equipe: 'equipe',
+        ResetPassword: 'reset-password',
+      },
+    },
+  };
+
   return (
     <EmpresaProvider>
-      <NavigationContainer theme={{ dark: true, colors: { primary: colors.accent, background: colors.bg, card: colors.surface, text: colors.text, border: colors.border, notification: colors.gold } }}>
+      <NavigationContainer
+        ref={navigationRef}
+        linking={linking}
+        theme={{ dark: true, colors: { primary: colors.accent, background: colors.bg, card: colors.surface, text: colors.text, border: colors.border, notification: colors.gold } }}
+      >
         <Tab.Navigator
           screenOptions={({ route }) => ({
             headerShown: false,
@@ -40,6 +60,11 @@ export default function AppNavigator() {
           <Tab.Screen name="Produtos" component={ProdutosScreen} />
           <Tab.Screen name="Painel" component={PainelScreen} options={{ title: 'Análises' }} />
           <Tab.Screen name="Equipe" component={EquipeScreen} options={{ tabBarButton: () => null, tabBarItemStyle: { display: 'none' } }} />
+          <Tab.Screen
+            name="ResetPassword"
+            component={ResetPasswordScreen}
+            options={{ tabBarButton: () => null, title: 'Redefinir senha' }}
+          />
         </Tab.Navigator>
       </NavigationContainer>
     </EmpresaProvider>

@@ -11,6 +11,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Linking from 'expo-linking';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../services/supabase';
@@ -99,7 +100,10 @@ export default function LoginScreen() {
       return;
     }
     setLoading(true);
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim());
+    const redirectUrl = Linking.createURL('reset-password');
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: redirectUrl,
+    });
     setLoading(false);
     if (resetError) {
       setError(translateError(resetError.message));

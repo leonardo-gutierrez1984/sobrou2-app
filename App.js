@@ -1,20 +1,25 @@
 import React, { useEffect, useState } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { createNavigationContainerRef } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AppNavigator from './src/navigation/AppNavigator';
 import LoginScreen from './src/screens/LoginScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
+import ResetPasswordScreen from './src/screens/ResetPasswordScreen';
 import { supabase } from './src/services/supabase';
 import { colors } from './src/theme/colors';
 
 console.log('[App] module evaluated');
+
+const navigationRef = createNavigationContainerRef();
 
 export default function App() {
   console.log('[App] component rendering');
   const [session, setSession] = useState(null);
   const [hasEmpresa, setHasEmpresa] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
 
   useEffect(() => {
     console.log('[App] useEffect running');
@@ -158,6 +163,12 @@ export default function App() {
       }
       console.log('[App] onAuthStateChange:', event);
       try {
+        if (event === 'PASSWORD_RECOVERY') {
+          setPasswordRecovery(true);
+          if (navigationRef.isReady()) {
+            navigationRef.navigate('ResetPassword');
+          }
+        }
         if (event === 'SIGNED_IN') {
           setSession(newSession);
           if (newSession) {
@@ -190,6 +201,9 @@ export default function App() {
         </View>
       );
     }
+    if (passwordRecovery) {
+      return <ResetPasswordScreen onSuccess={() => setPasswordRecovery(false)} />;
+    }
     if (!session) return <LoginScreen />;
     if (hasEmpresa === null) {
       return (
@@ -201,7 +215,7 @@ export default function App() {
     if (!hasEmpresa) {
       return <OnboardingScreen onComplete={() => setHasEmpresa(true)} />;
     }
-    return <AppNavigator />;
+    return <AppNavigator navigationRef={navigationRef} />;
   };
 
   return (
