@@ -157,7 +157,7 @@ export default function App() {
 
     const { data: sub } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (!mounted) return;
-      if (!bootDone) {
+      if (!bootDone && event !== 'PASSWORD_RECOVERY') {
         console.log('[App] onAuthStateChange ignored during boot:', event);
         return;
       }
