@@ -25,6 +25,7 @@ import {
   DESTINOS,
   getDestinoColor,
   formatBRL,
+  formatarQuantidade,
   getRangeForDate,
 } from '../utils/lancamentos';
 
@@ -489,7 +490,7 @@ export default function InicioScreen() {
                     ) : null}
                   </View>
                   <Text style={[styles.td, styles.colSobra]}>
-                    {String(l.quantidade).replace('.', ',')} {l.unidade}
+                    {formatarQuantidade(l.quantidade)} {l.unidade}
                   </Text>
                   <View style={styles.colDestino}>
                     <View
@@ -621,7 +622,7 @@ export default function InicioScreen() {
                   <>
                     <Text style={styles.modalProduto}>{editingLanc.produto_nome}</Text>
                     <Text style={styles.modalSubmeta}>
-                      {String(editingLanc.quantidade).replace('.', ',')}{' '}
+                      {formatarQuantidade(editingLanc.quantidade)}{' '}
                       {editingLanc.unidade}
                     </Text>
 

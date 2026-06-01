@@ -27,6 +27,14 @@ export function formatBRL(value) {
   return `R$ ${n.toFixed(2).replace('.', ',')}`;
 }
 
+export function formatarQuantidade(valor) {
+  const n = typeof valor === 'number' ? valor : parseFloat(valor);
+  if (isNaN(n)) return '0';
+  const arredondado = Math.round(n * 1000) / 1000;
+  if (Number.isInteger(arredondado)) return String(arredondado);
+  return arredondado.toFixed(3).replace('.', ',');
+}
+
 export function formatTime(iso) {
   if (!iso) return '';
   try {
@@ -44,9 +52,5 @@ export function getRangeForDate(date) {
   inicio.setHours(0, 0, 0, 0);
   const fim = new Date(date);
   fim.setHours(23, 59, 59, 999);
-  const offsetMs = inicio.getTimezoneOffset() * 60 * 1000;
-  return {
-    inicio: new Date(inicio.getTime() - offsetMs),
-    fim: new Date(fim.getTime() - offsetMs),
-  };
+  return { inicio, fim };
 }

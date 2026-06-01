@@ -23,7 +23,7 @@ import * as Print from 'expo-print';
 import { supabase } from '../services/supabase';
 import { colors } from '../theme/colors';
 import AppHeader from '../components/AppHeader';
-import { formatBRL } from '../utils/lancamentos';
+import { formatBRL, formatarQuantidade } from '../utils/lancamentos';
 
 const DESTINOS = [
   { id: 'Lixo', emoji: '🗑️', color: colors.accent },
@@ -293,7 +293,7 @@ export default function PainelScreen() {
       if (l.destino === 'Venda Resgatada') return;
       const u = l.unidade || '-';
       const q = parseFloat(l.quantidade) || 0;
-      acc[u] = (acc[u] || 0) + q;
+      acc[u] = Math.round(((acc[u] || 0) + q) * 1000) / 1000;
     });
     return Object.entries(acc)
       .map(([unidade, quantidade]) => ({ unidade, quantidade }))
@@ -307,7 +307,7 @@ export default function PainelScreen() {
       acc[l.destino].count += 1;
       const u = l.unidade || '-';
       const q = parseFloat(l.quantidade) || 0;
-      acc[l.destino].porUnidade[u] = (acc[l.destino].porUnidade[u] || 0) + q;
+      acc[l.destino].porUnidade[u] = Math.round(((acc[l.destino].porUnidade[u] || 0) + q) * 1000) / 1000;
     });
     const total = lancamentosFiltrados.length || 1;
     return DESTINOS.filter((d) => acc[d.id]?.count > 0).map((d) => ({
@@ -332,7 +332,7 @@ export default function PainelScreen() {
         };
       }
       const qtd = parseFloat(l.quantidade) || 0;
-      grupos[key].quantidade += qtd;
+      grupos[key].quantidade = Math.round((grupos[key].quantidade + qtd) * 1000) / 1000;
       const custo = parseFloat(l.produtos?.custo_estimado);
       if (!isNaN(custo) && custo > 0 && l.destino !== 'Venda Resgatada') {
         grupos[key].prejuizo += qtd * custo;
@@ -412,7 +412,7 @@ export default function PainelScreen() {
       }
       const g = grupos[key];
       const qtd = parseFloat(l.quantidade) || 0;
-      g.quantidade += qtd;
+      g.quantidade = Math.round((g.quantidade + qtd) * 1000) / 1000;
       g.count += 1;  // ADICIONAR ESTA LINHA
       g.destinos[l.destino] = (g.destinos[l.destino] || 0) + 1;
       const custo = parseFloat(l.produtos?.custo_estimado);
@@ -503,7 +503,7 @@ export default function PainelScreen() {
           const row = [
             dataStr,
             l.produto_nome ?? '',
-            String(l.quantidade ?? '').replace('.', ','),
+            formatarQuantidade(l.quantidade),
             l.unidade ?? '',
             l.destino ?? '',
             !isNaN(custo) ? brl2(custo) : '',
@@ -607,7 +607,7 @@ export default function PainelScreen() {
       const resumoCardsHTML = `
         <div class="card">
           <div class="card-label">Total de Sobras</div>
-          <div class="card-value">${htmlEscape(totalSobras.toFixed(2).replace('.', ','))}</div>
+          <div class="card-value">${htmlEscape(formatarQuantidade(totalSobras))}</div>
         </div>
         <div class="card">
           <div class="card-label">Prejuízo Estimado</div>
@@ -629,7 +629,7 @@ export default function PainelScreen() {
         <div class="card destino-card" style="border-color:${d.color};">
           <div class="card-label">${htmlEscape(d.id)}</div>
           <div class="card-value" style="color:${d.color};">
-            ${htmlEscape(destinoQtd[d.id].toFixed(2).replace('.', ','))}
+            ${htmlEscape(formatarQuantidade(destinoQtd[d.id]))}
           </div>
         </div>
       `
@@ -655,7 +655,7 @@ export default function PainelScreen() {
                 (p, idx) => `
               <tr class="${idx % 2 === 0 ? 'row-alt' : ''}">
                 <td>${htmlEscape(p.nome)}</td>
-                <td class="col-num">${htmlEscape(p.quantidade.toFixed(2).replace('.', ','))}</td>
+                <td class="col-num">${htmlEscape(formatarQuantidade(p.quantidade))}</td>
                 <td class="col-num">${htmlEscape(p.unidade || '-')}</td>
                 <td class="col-num">${
                   p.prejuizo > 0
@@ -689,7 +689,7 @@ export default function PainelScreen() {
                 (l, idx) => `
               <tr class="${idx % 2 === 0 ? 'row-alt' : ''}">
                 <td>${htmlEscape(l.produto_nome || '-')}</td>
-                <td class="col-num">${htmlEscape(String(l.quantidade ?? '').replace('.', ','))}</td>
+                <td class="col-num">${htmlEscape(formatarQuantidade(l.quantidade))}</td>
                 <td class="col-num">${htmlEscape(l.unidade || '-')}</td>
               </tr>
             `
@@ -1080,8 +1080,7 @@ export default function PainelScreen() {
               {totaisPorUnidade.map((t) => (
                 <View key={t.unidade} style={styles.chip}>
                   <Text style={styles.chipText}>
-                    {t.quantidade.toFixed(t.quantidade % 1 === 0 ? 0 : 2).replace('.', ',')}{' '}
-                    {t.unidade}
+                    {formatarQuantidade(t.quantidade)} {t.unidade}
                   </Text>
                 </View>
               ))}
@@ -1132,7 +1131,7 @@ export default function PainelScreen() {
                 <View style={styles.rankInfo}>
                   <Text style={styles.rankNome}>{(r.nome || '').toUpperCase()}</Text>
                   <Text style={styles.rankMeta}>
-                    {r.quantidade.toString().replace('.', ',')} {r.unidade}
+                    {formatarQuantidade(r.quantidade)} {r.unidade}
                   </Text>
                 </View>
                 {r.temCusto && r.prejuizo > 0 ? (
@@ -1211,7 +1210,7 @@ export default function PainelScreen() {
                 const qtdText = Object.entries(d.porUnidade)
                   .map(
                     ([u, q]) =>
-                      `${q.toFixed(q % 1 === 0 ? 0 : 2).replace('.', ',')} ${u}`
+                      `${formatarQuantidade(q)} ${u}`
                   )
                   .join(' · ');
                 const last = idx === destinosResumo.length - 1;
@@ -1286,7 +1285,7 @@ export default function PainelScreen() {
                           {p.nome}
                         </Text>
                         <Text style={[styles.detalheTd, styles.detalheColQtd]}>
-                          {p.quantidade.toFixed(2).replace('.', ',')} {p.unidade}
+                          {formatarQuantidade(p.quantidade)} {p.unidade}
                           {'\n'}
                           <Text style={{ color: colors.muted, fontSize: 10, marginTop: 2 }}>
                             {p.count > 1 ? `${p.count} lançamentos` : ''}
@@ -1383,7 +1382,7 @@ export default function PainelScreen() {
                       <Text style={styles.itemNome}>{l.produto_nome}</Text>
                       <View style={styles.itemMetaRow}>
                         <Text style={styles.itemQtd}>
-                          {String(l.quantidade).replace('.', ',')} {l.unidade}
+                          {formatarQuantidade(l.quantidade)} {l.unidade}
                         </Text>
                         <Text style={styles.itemSep}>·</Text>
                         <Text

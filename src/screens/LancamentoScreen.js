@@ -21,7 +21,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../services/supabase';
 import { colors } from '../theme/colors';
 import AppHeader from '../components/AppHeader';
-import { DESTINOS, getDestinoColor, formatBRL } from '../utils/lancamentos';
+import {
+  DESTINOS,
+  getDestinoColor,
+  formatBRL,
+  formatarQuantidade,
+} from '../utils/lancamentos';
 
 const SERIF = Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' });
 
@@ -108,6 +113,11 @@ export default function LancamentoScreen() {
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [errorField, setErrorField] = useState(null);
+
+  const scrollRef = useRef(null);
+  const formCardY = useRef(0);
+  const fieldY = useRef({});
 
   const [toast, setToast] = useState('');
   const toastAnim = useRef(new Animated.Value(0)).current;
@@ -248,12 +258,9 @@ export default function LancamentoScreen() {
     inicioHoje.setHours(0, 0, 0, 0);
     const fimHoje = new Date(hoje);
     fimHoje.setHours(23, 59, 59, 999);
-    const offsetMs = inicioHoje.getTimezoneOffset() * 60 * 1000;
-    const inicioUTC = new Date(inicioHoje.getTime() - offsetMs);
-    const fimUTC = new Date(fimHoje.getTime() - offsetMs);
     try {
       const { data, error: err } = await withTimeout(
-        supabase.from('lancamentos_sobras').select('*').eq('empresa_id', empId).gte('data', inicioUTC.toISOString()).lte('data', fimUTC.toISOString()).order('data', { ascending: false }),
+        supabase.from('lancamentos_sobras').select('*').eq('empresa_id', empId).gte('data', inicioHoje.toISOString()).lte('data', fimHoje.toISOString()).order('data', { ascending: false }),
         'loadLancamentosHoje'
       );
       if (err) console.error('[Lanc] loadLancamentosHoje error:', err);
@@ -700,6 +707,11 @@ export default function LancamentoScreen() {
     ]).start(() => setToast(''));
   };
 
+  const scrollToField = (field) => {
+    const y = (formCardY.current || 0) + (fieldY.current[field] || 0) - 80;
+    scrollRef.current?.scrollTo({ y: Math.max(0, y), animated: true });
+  };
+
   const resetForm = () => {
     setSelected(null);
     setSearch('');
@@ -711,10 +723,12 @@ export default function LancamentoScreen() {
     setValorCheio('');
     setValorRecebido('');
     setError('');
+    setErrorField(null);
   };
 
   const handleSave = async () => {
     setError('');
+    setErrorField(null);
     if (!selected) {
       setError('Selecione um produto.');
       return;
@@ -726,6 +740,8 @@ export default function LancamentoScreen() {
     const temProducao = !!qtdProducao && !isNaN(producaoNum) && producaoNum > 0;
     if (qtdProducao && (isNaN(producaoNum) || producaoNum < 0)) {
       setError('Quantidade produzida inválida.');
+      setErrorField('producao');
+      scrollToField('producao');
       return;
     }
 
@@ -733,11 +749,15 @@ export default function LancamentoScreen() {
     const temSobra = !!quantidade && !isNaN(qNum) && qNum > 0;
     if (quantidade && (isNaN(qNum) || qNum < 0)) {
       setError('Quantidade de sobra inválida.');
+      setErrorField('sobra');
+      scrollToField('sobra');
       return;
     }
 
     if (!temProducao && !temSobra) {
       setError('Informe a quantidade produzida ou de sobra.');
+      setErrorField('sobra');
+      scrollToField('sobra');
       return;
     }
 
@@ -746,6 +766,8 @@ export default function LancamentoScreen() {
     if (temSobra) {
       if (!destino) {
         setError('Selecione o destino da sobra.');
+        setErrorField('destino');
+        scrollToField('destino');
         return;
       }
       if (destino === 'Venda Resgatada') {
@@ -753,10 +775,14 @@ export default function LancamentoScreen() {
         valorRecebidoNum = parseFloat(String(valorRecebido).replace(',', '.'));
         if (!valorCheio || isNaN(valorCheioNum) || valorCheioNum < 0) {
           setError('Informe o valor cheio.');
+          setErrorField('venda');
+          scrollToField('venda');
           return;
         }
         if (!valorRecebido || isNaN(valorRecebidoNum) || valorRecebidoNum < 0) {
           setError('Informe o valor recebido.');
+          setErrorField('venda');
+          scrollToField('venda');
           return;
         }
       }
@@ -865,6 +891,7 @@ export default function LancamentoScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={styles.container}
           keyboardShouldPersistTaps="handled"
         >
@@ -877,7 +904,7 @@ export default function LancamentoScreen() {
                 const nome = lote.produtos?.nome || 'Produto';
                 const unidadeLote = lote.produtos?.unidade || '';
                 const validade = lote.produtos?.validade_dias;
-                const qtdStr = String(lote.quantidade ?? '').replace('.', ',');
+                const qtdStr = formatarQuantidade(lote.quantidade ?? '');
                 return (
                   <View key={lote.id} style={styles.vencimentoItem}>
                     <Text style={styles.vencimentoNome}>
@@ -1009,7 +1036,12 @@ export default function LancamentoScreen() {
               )}
             </View>
           ) : (
-            <View style={styles.formCard}>
+            <View
+              style={styles.formCard}
+              onLayout={(e) => {
+                formCardY.current = e.nativeEvent.layout.y;
+              }}
+            >
               <View style={styles.selectedHeader}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.selectedLabel}>PRODUTO</Text>
@@ -1026,30 +1058,21 @@ export default function LancamentoScreen() {
                 </View>
               </View>
 
-              <Text style={styles.formLabel}>
-                Qtd. Produzida{' '}
-                <Text style={styles.labelOpcional}>opcional</Text>
-              </Text>
-              <TextInput
-                style={styles.formInput}
-                value={qtdProducao}
-                onChangeText={setQtdProducao}
-                placeholder="Ex: 200"
-                placeholderTextColor={ACOES_MUTED}
-                keyboardType="decimal-pad"
-                editable={!saving}
-              />
-              <Text style={styles.helperText}>Registre o que foi produzido hoje</Text>
-
               <Text style={styles.formLabel}>Qtd. de Sobra</Text>
               <TextInput
-                style={styles.formInput}
+                style={[
+                  styles.formInput,
+                  errorField === 'sobra' && styles.inputError,
+                ]}
                 value={quantidade}
                 onChangeText={setQuantidade}
                 placeholder="0"
                 placeholderTextColor={ACOES_MUTED}
                 keyboardType="decimal-pad"
                 editable={!saving}
+                onLayout={(e) => {
+                  fieldY.current.sobra = e.nativeEvent.layout.y;
+                }}
               />
 
               {unidade === 'Kg' || unidade === 'L' ? (
@@ -1110,7 +1133,15 @@ export default function LancamentoScreen() {
               </View>
 
               <Text style={styles.formLabel}>Destino da sobra</Text>
-              <View style={styles.destinosRow}>
+              <View
+                style={[
+                  styles.destinosRow,
+                  errorField === 'destino' && styles.destinosRowError,
+                ]}
+                onLayout={(e) => {
+                  fieldY.current.destino = e.nativeEvent.layout.y;
+                }}
+              >
                 {DESTINOS.filter((d) => d.id !== 'Venda Resgatada').map((d) => {
                   const active = d.id === destino;
                   const palette = DESTINO_PALETTE[d.id];
@@ -1163,7 +1194,12 @@ export default function LancamentoScreen() {
               </TouchableOpacity>
 
               {destino === 'Venda Resgatada' ? (
-                <View style={styles.vendaBox}>
+                <View
+                  style={styles.vendaBox}
+                  onLayout={(e) => {
+                    fieldY.current.venda = e.nativeEvent.layout.y;
+                  }}
+                >
                   <Text style={styles.formLabel}>Valor cheio (R$)</Text>
                   <TextInput
                     style={styles.formInput}
@@ -1187,7 +1223,33 @@ export default function LancamentoScreen() {
                 </View>
               ) : null}
 
-              {error ? <Text style={styles.error}>{error}</Text> : null}
+              <Text style={styles.formLabel}>
+                Qtd. Produzida{' '}
+                <Text style={styles.labelOpcional}>opcional</Text>
+              </Text>
+              <TextInput
+                style={[
+                  styles.formInput,
+                  errorField === 'producao' && styles.inputError,
+                ]}
+                value={qtdProducao}
+                onChangeText={setQtdProducao}
+                placeholder="Ex: 200"
+                placeholderTextColor={ACOES_MUTED}
+                keyboardType="decimal-pad"
+                editable={!saving}
+                onLayout={(e) => {
+                  fieldY.current.producao = e.nativeEvent.layout.y;
+                }}
+              />
+              <Text style={styles.helperText}>Registre o que foi produzido hoje</Text>
+
+              {error ? (
+                <View style={styles.errorBanner}>
+                  <Ionicons name="alert-circle" size={20} color={colors.danger} />
+                  <Text style={styles.errorBannerText}>{error}</Text>
+                </View>
+              ) : null}
 
               <TouchableOpacity
                 style={[styles.saveButton, saving && styles.buttonDisabled]}
@@ -1251,7 +1313,7 @@ export default function LancamentoScreen() {
                         <View style={{ flex: 1 }}>
                           <Text style={styles.sacolaItemNome}>{item.produto_nome}</Text>
                           <Text style={styles.sacolaItemMeta}>
-                            {String(item.quantidade).replace('.', ',')} {item.unidade}
+                            {formatarQuantidade(item.quantidade)} {item.unidade}
                           </Text>
                         </View>
                         <TouchableOpacity
@@ -1414,7 +1476,7 @@ export default function LancamentoScreen() {
                       <View style={{ flex: 1 }}>
                         <Text style={styles.sacolaItemNome}>{item.produto_nome}</Text>
                         <Text style={styles.sacolaItemMeta}>
-                          {String(item.quantidade).replace('.', ',')} {item.unidade}
+                          {formatarQuantidade(item.quantidade)} {item.unidade}
                         </Text>
                       </View>
                       <TouchableOpacity
@@ -1526,7 +1588,7 @@ export default function LancamentoScreen() {
                       {item.produtos?.nome || 'Produto'}
                     </Text>
                     <Text style={styles.planejHistMeta}>
-                      {String(item.quantidade ?? '').replace('.', ',')}{' '}
+                      {formatarQuantidade(item.quantidade)}{' '}
                       {item.produtos?.unidade || ''}
                     </Text>
                   </View>
@@ -1663,7 +1725,7 @@ export default function LancamentoScreen() {
                   <>
                     <Text style={styles.modalProduto}>{editingLanc.produto_nome}</Text>
                     <Text style={styles.modalSubmeta}>
-                      {String(editingLanc.quantidade).replace('.', ',')} {editingLanc.unidade}
+                      {formatarQuantidade(editingLanc.quantidade)} {editingLanc.unidade}
                     </Text>
 
                     <Text style={styles.label}>Destino</Text>
@@ -1774,7 +1836,7 @@ function LancRow({ lanc, onEdit, onDelete }) {
         <Text style={styles.lancNome}>{lanc.produto_nome}</Text>
         <View style={styles.lancMetaRow}>
           <Text style={styles.lancQtd}>
-            {String(lanc.quantidade).replace('.', ',')} {lanc.unidade}
+            {formatarQuantidade(lanc.quantidade)} {lanc.unidade}
           </Text>
           <Text style={styles.lancSep}>·</Text>
           <Text style={[styles.lancDestino, { color: destinoColor }]}>
@@ -1923,6 +1985,33 @@ const styles = StyleSheet.create({
     fontSize: 15,
     borderWidth: 1,
     borderColor: ACOES_BORDER,
+  },
+  inputError: {
+    borderColor: colors.danger,
+    borderWidth: 1.5,
+  },
+  destinosRowError: {
+    borderWidth: 1.5,
+    borderColor: colors.danger,
+    borderRadius: 12,
+    padding: 6,
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(194,66,42,0.12)',
+    borderWidth: 1,
+    borderColor: colors.danger,
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 16,
+  },
+  errorBannerText: {
+    color: colors.danger,
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 8,
+    flex: 1,
   },
   formLabelInline: {
     fontSize: 11,
