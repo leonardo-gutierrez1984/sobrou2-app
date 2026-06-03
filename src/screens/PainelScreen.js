@@ -552,10 +552,28 @@ export default function PainelScreen() {
       fim.setHours(23, 59, 59, 999);
       const now = new Date();
 
-      const totalSobras = lancamentosFiltrados.reduce((acc, l) => {
-        if (l.destino === 'Venda Resgatada') return acc;
-        return acc + (parseFloat(l.quantidade) || 0);
-      }, 0);
+      const agruparPorUnidade = (lista, filtro) => {
+        const acc = {};
+        lista.forEach((l) => {
+          if (filtro && !filtro(l)) return;
+          const u = l.unidade || '-';
+          const q = parseFloat(l.quantidade) || 0;
+          acc[u] = Math.round(((acc[u] || 0) + q) * 1000) / 1000;
+        });
+        return Object.entries(acc)
+          .map(([unidade, quantidade]) => ({ unidade, quantidade }))
+          .sort((a, b) => b.quantidade - a.quantidade);
+      };
+      const htmlPorUnidade = (arr) =>
+        arr.length === 0
+          ? '—'
+          : arr
+              .map((t) => `${htmlEscape(formatarQuantidade(t.quantidade))} ${htmlEscape(t.unidade)}`)
+              .join('<br/>');
+      const totaisSobras = agruparPorUnidade(
+        lancamentosFiltrados,
+        (l) => l.destino !== 'Venda Resgatada'
+      );
       const prejuizoEst = lancamentosFiltrados.reduce((acc, l) => {
         if (l.destino === 'Venda Resgatada') return acc;
         const c = parseFloat(l.produtos?.custo_estimado) || 0;
@@ -573,20 +591,10 @@ export default function PainelScreen() {
         { id: 'Transformação', color: colors.gold },
         { id: 'Venda Resgatada', color: colors.blue },
       ];
-      const destinoQtd = {};
-      destinosCfg.forEach((d) => {
-        destinoQtd[d.id] = 0;
-      });
-      lancamentosFiltrados.forEach((l) => {
-        if (destinoQtd[l.destino] != null) {
-          destinoQtd[l.destino] += parseFloat(l.quantidade) || 0;
-        }
-      });
-
       const perdasMap = new Map();
       lancamentosFiltrados.forEach((l) => {
         if (l.destino === 'Venda Resgatada') return;
-        const key = l.produto_id || l.produto_nome;
+        const key = `${l.produto_id || l.produto_nome}|${l.unidade || ''}`;
         if (!perdasMap.has(key)) {
           perdasMap.set(key, {
             nome: l.produto_nome || '-',
@@ -607,7 +615,7 @@ export default function PainelScreen() {
       const resumoCardsHTML = `
         <div class="card">
           <div class="card-label">Total de Sobras</div>
-          <div class="card-value">${htmlEscape(formatarQuantidade(totalSobras))}</div>
+          <div class="card-value">${htmlPorUnidade(totaisSobras)}</div>
         </div>
         <div class="card">
           <div class="card-label">Prejuízo Estimado</div>
@@ -629,7 +637,7 @@ export default function PainelScreen() {
         <div class="card destino-card" style="border-color:${d.color};">
           <div class="card-label">${htmlEscape(d.id)}</div>
           <div class="card-value" style="color:${d.color};">
-            ${htmlEscape(formatarQuantidade(destinoQtd[d.id]))}
+            ${htmlPorUnidade(agruparPorUnidade(lancamentosFiltrados, (l) => l.destino === d.id))}
           </div>
         </div>
       `
