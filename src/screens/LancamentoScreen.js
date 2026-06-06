@@ -13,6 +13,7 @@ import {
   Keyboard,
   Alert,
   Modal,
+  AppState,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -298,6 +299,22 @@ export default function LancamentoScreen() {
       loadPlanejamentoAmanha(empresaId);
     }, [empresaId])
   );
+
+  // Recarrega a lista de "hoje" quando o app volta do segundo plano para 'active'.
+  // Resolve o caso do app ficar aberto a noite toda e, no dia seguinte, ainda
+  // mostrar os lançamentos de ontem até o usuário matar o app.
+  const appStateRef = useRef(AppState.currentState);
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState) => {
+      const prevState = appStateRef.current;
+      appStateRef.current = nextState;
+      if (prevState !== 'active' && nextState === 'active' && empresaId) {
+        loadLancamentosHoje(empresaId);
+        loadProdutosVencendoHoje(empresaId);
+      }
+    });
+    return () => sub.remove();
+  }, [empresaId]);
 
   useEffect(() => {
     if (sacola.length === 0) return;
