@@ -27,6 +27,7 @@ import {
   formatBRL,
   formatarQuantidade,
   getRangeForDate,
+  calcularPrejuizo,
 } from '../utils/lancamentos';
 
 function isSameDay(a, b) {
@@ -182,18 +183,14 @@ export default function InicioScreen() {
 
   const totals = useMemo(() => {
     const count = lancamentos.length;
-    let prejuizo = 0;
+    const { prejuizo, semCusto, comCusto } = calcularPrejuizo(lancamentos);
     let recuperado = 0;
     for (const l of lancamentos) {
-      const qtd = parseFloat(l.quantidade) || 0;
-      const custo = parseFloat(l.produtos?.custo_estimado) || 0;
       if (l.destino === 'Venda Resgatada') {
         recuperado += parseFloat(l.valor_recebido) || 0;
-      } else {
-        prejuizo += qtd * custo;
       }
     }
-    return { count, prejuizo, recuperado };
+    return { count, prejuizo, recuperado, semCusto, comCusto };
   }, [lancamentos]);
 
   const lancsVisiveis = useMemo(
@@ -410,10 +407,22 @@ export default function InicioScreen() {
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>PREJUÍZO EST.</Text>
-            <Text style={[styles.statValue, { color: colors.accent }]}>
-              {formatBRL(totals.prejuizo)}
-            </Text>
-            <Text style={styles.statSub}>{isHoje ? 'hoje' : fmtDateBR(selectedDate)}</Text>
+            {totals.comCusto === 0 ? (
+              <Text style={[styles.statValue, { color: colors.muted }]}>
+                custo não informado
+              </Text>
+            ) : (
+              <Text style={[styles.statValue, { color: colors.accent }]}>
+                {formatBRL(totals.prejuizo)}
+              </Text>
+            )}
+            {totals.comCusto > 0 && totals.semCusto > 0 ? (
+              <Text style={styles.statSub}>
+                {totals.semCusto} {totals.semCusto === 1 ? 'item' : 'itens'} sem custo
+              </Text>
+            ) : (
+              <Text style={styles.statSub}>{isHoje ? 'hoje' : fmtDateBR(selectedDate)}</Text>
+            )}
           </View>
         </View>
         <View style={styles.statCardLarge}>

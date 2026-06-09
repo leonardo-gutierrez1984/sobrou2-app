@@ -23,7 +23,7 @@ import * as Print from 'expo-print';
 import { supabase } from '../services/supabase';
 import { colors } from '../theme/colors';
 import AppHeader from '../components/AppHeader';
-import { formatBRL, formatarQuantidade } from '../utils/lancamentos';
+import { formatBRL, formatarQuantidade, calcularPrejuizo } from '../utils/lancamentos';
 
 const DESTINOS = [
   { id: 'Lixo', emoji: '🗑️', color: colors.accent },
@@ -49,12 +49,7 @@ function formatDateTime(iso) {
 }
 
 function calcPrejuizo(lancs) {
-  return lancs.reduce((acc, l) => {
-    if (l.destino === 'Venda Resgatada') return acc;
-    const custo = parseFloat(l.produtos?.custo_estimado) || 0;
-    const qtd = parseFloat(l.quantidade) || 0;
-    return acc + qtd * custo;
-  }, 0);
+  return calcularPrejuizo(lancs).prejuizo;
 }
 
 function showToast(msg) {
@@ -279,12 +274,12 @@ export default function PainelScreen() {
 
   const totals = useMemo(() => {
     const total = lancamentosFiltrados.length;
-    const prejuizo = calcPrejuizo(lancamentosFiltrados);
+    const { prejuizo, semCusto, comCusto } = calcularPrejuizo(lancamentosFiltrados);
     const recuperado = lancamentosFiltrados.reduce((acc, l) => {
       if (l.destino !== 'Venda Resgatada') return acc;
       return acc + (parseFloat(l.valor_recebido) || 0);
     }, 0);
-    return { total, prejuizo, recuperado };
+    return { total, prejuizo, recuperado, semCusto, comCusto };
   }, [lancamentosFiltrados]);
 
   const totaisPorUnidade = useMemo(() => {
@@ -574,11 +569,11 @@ export default function PainelScreen() {
         lancamentosFiltrados,
         (l) => l.destino !== 'Venda Resgatada'
       );
-      const prejuizoEst = lancamentosFiltrados.reduce((acc, l) => {
-        if (l.destino === 'Venda Resgatada') return acc;
-        const c = parseFloat(l.produtos?.custo_estimado) || 0;
-        return acc + (parseFloat(l.quantidade) || 0) * c;
-      }, 0);
+      const {
+        prejuizo: prejuizoEst,
+        semCusto: semCustoPdf,
+        comCusto: comCustoPdf,
+      } = calcularPrejuizo(lancamentosFiltrados);
       const totalLancamentos = lancamentosFiltrados.length;
       const valorRecuperado = lancamentosFiltrados.reduce((acc, l) => {
         if (l.destino !== 'Venda Resgatada') return acc;
@@ -619,7 +614,18 @@ export default function PainelScreen() {
         </div>
         <div class="card">
           <div class="card-label">Prejuízo Estimado</div>
-          <div class="card-value accent">R$ ${htmlEscape(brl2(prejuizoEst))}</div>
+          <div class="card-value accent">${
+            comCustoPdf === 0
+              ? '<span class="muted">custo não informado</span>'
+              : `R$ ${htmlEscape(brl2(prejuizoEst))}`
+          }</div>
+          ${
+            comCustoPdf > 0 && semCustoPdf > 0
+              ? `<div class="muted" style="font-size:11px;margin-top:4px;">${semCustoPdf} ${
+                  semCustoPdf === 1 ? 'item' : 'itens'
+                } sem custo</div>`
+              : ''
+          }
         </div>
         <div class="card">
           <div class="card-label">Lançamentos</div>
@@ -1099,10 +1105,22 @@ export default function PainelScreen() {
         <View style={styles.statsRow}>
           <View style={[styles.statCardHalf, { marginRight: 5 }]}>
             <Text style={styles.statLabel}>PREJUÍZO EST.</Text>
-            <Text style={[styles.statValueBig, { color: colors.accent }]}>
-              {formatBRL(totals.prejuizo)}
-            </Text>
-            <Text style={styles.statSub}>no período</Text>
+            {totals.comCusto === 0 ? (
+              <Text style={[styles.statValueBig, { color: colors.muted }]}>
+                custo não informado
+              </Text>
+            ) : (
+              <Text style={[styles.statValueBig, { color: colors.accent }]}>
+                {formatBRL(totals.prejuizo)}
+              </Text>
+            )}
+            {totals.comCusto > 0 && totals.semCusto > 0 ? (
+              <Text style={styles.statSub}>
+                {totals.semCusto} {totals.semCusto === 1 ? 'item' : 'itens'} sem custo
+              </Text>
+            ) : (
+              <Text style={styles.statSub}>no período</Text>
+            )}
           </View>
           <View style={[styles.statCardHalf, { marginLeft: 5 }]}>
             <Text style={styles.statLabel}>LANÇAMENTOS</Text>

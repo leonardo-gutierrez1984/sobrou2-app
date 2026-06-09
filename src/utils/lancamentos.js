@@ -27,6 +27,24 @@ export function formatBRL(value) {
   return `R$ ${n.toFixed(2).replace('.', ',')}`;
 }
 
+export function calcularPrejuizo(lancs) {
+  let prejuizo = 0;
+  let semCusto = 0;
+  let comCusto = 0;
+  for (const l of lancs || []) {
+    if (l.destino === 'Venda Resgatada') continue;
+    const custo = parseFloat(l.produtos?.custo_estimado);
+    if (!isNaN(custo) && custo > 0) {
+      const qtd = parseFloat(l.quantidade) || 0;
+      prejuizo += qtd * custo;
+      comCusto += 1;
+    } else {
+      semCusto += 1;
+    }
+  }
+  return { prejuizo, semCusto, comCusto };
+}
+
 export function formatarQuantidade(valor) {
   const n = typeof valor === 'number' ? valor : parseFloat(valor);
   if (isNaN(n)) return '0';
