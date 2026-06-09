@@ -9,12 +9,17 @@ import OnboardingScreen from './src/screens/OnboardingScreen';
 import ResetPasswordScreen from './src/screens/ResetPasswordScreen';
 import { supabase } from './src/services/supabase';
 import { colors } from './src/theme/colors';
+import * as Sentry from '@sentry/react-native';
 
 console.log('[App] module evaluated');
 
+Sentry.init({
+  dsn: 'https://916fdfb60105cbdeb66d26478750b637@o4511537522671616.ingest.us.sentry.io/4511537541349376',
+});
+
 const navigationRef = createNavigationContainerRef();
 
-export default function App() {
+function App() {
   console.log('[App] component rendering');
   const [session, setSession] = useState(null);
   const [hasEmpresa, setHasEmpresa] = useState(null);
@@ -234,3 +239,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
+
+export default Sentry.wrap(App);

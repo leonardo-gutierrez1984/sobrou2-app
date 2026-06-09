@@ -30,7 +30,14 @@
     },
     "plugins": [
       "expo-secure-store",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "@sentry/react-native/expo",
+        {
+          "organization": "sobrou",
+          "project": "sobrou-app"
+        }
+      ]
     ],
     "extra": {
       "eas": {
