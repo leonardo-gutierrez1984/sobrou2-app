@@ -19,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Crypto from 'expo-crypto';
 import { supabase } from '../services/supabase';
 import { colors } from '../theme/colors';
 import AppHeader from '../components/AppHeader';
@@ -119,6 +120,7 @@ export default function LancamentoScreen() {
   const scrollRef = useRef(null);
   const formCardY = useRef(0);
   const fieldY = useRef({});
+  const saveUuidRef = useRef(null);
 
   const [toast, setToast] = useState('');
   const toastAnim = useRef(new Animated.Value(0)).current;
@@ -813,78 +815,46 @@ export default function LancamentoScreen() {
     const agoraISO = agora.toISOString();
     const hojeYMD = ymdLocal(agora);
 
-    if (temProducao) {
-      const { error: prodErr } = await supabase.from('producao').insert({
-        empresa_id: empresaId,
-        user_id: userId,
-        produto_id: selected.id,
-        quantidade: producaoNum,
-        data: agoraISO,
-      });
-      if (prodErr) {
-        setSaving(false);
-        setError(`Erro ao salvar produção: ${prodErr.message}`);
-        return;
-      }
-
-      if (selected.validade_dias != null && selected.validade_dias >= 0) {
-        const vencDate = new Date(agora);
-        vencDate.setDate(vencDate.getDate() + selected.validade_dias);
-        const { error: loteErr } = await supabase.from('lotes').insert({
-          empresa_id: empresaId,
-          user_id: userId,
-          produto_id: selected.id,
-          quantidade: producaoNum,
-          data_producao: hojeYMD,
-          data_vencimento: ymdLocal(vencDate),
-          status: 'aberto',
-        });
-        if (loteErr) {
-          setSaving(false);
-          setError(`Erro ao salvar lote: ${loteErr.message}`);
-          return;
-        }
-      }
+    // deriva o que a RPC precisa
+    const temLote =
+      temProducao && selected.validade_dias != null && selected.validade_dias >= 0;
+    let loteVencYMD = null;
+    if (temLote) {
+      const vencDate = new Date(agora);
+      vencDate.setDate(vencDate.getDate() + selected.validade_dias);
+      loteVencYMD = ymdLocal(vencDate);
     }
 
-    if (temSobra) {
-      console.log('[Lanc] destino sendo enviado:', destino);
+    // uuid de idempotencia: gera 1x, reusa em retry, limpa so no sucesso
+    if (!saveUuidRef.current) saveUuidRef.current = Crypto.randomUUID();
 
-      const payload = {
-        produto_id: selected.id,
-        produto_nome: selected.nome,
-        quantidade: qNum,
-        unidade,
-        destino,
-        user_id: userId,
-        empresa_id: empresaId,
-        data: agoraISO,
-      };
-      if (destino === 'Venda Resgatada') {
-        payload.valor_cheio = valorCheioNum;
-        payload.valor_recebido = valorRecebidoNum;
-      }
+    const { error: rpcErr } = await supabase.rpc('salvar_lancamento', {
+      p_client_uuid: saveUuidRef.current,
+      p_tem_producao: temProducao,
+      p_producao_qtd: producaoNum,
+      p_tem_lote: temLote,
+      p_lote_venc: loteVencYMD,
+      p_tem_sobra: temSobra,
+      p_sobra_qtd: qNum,
+      p_unidade: unidade,
+      p_destino: destino,
+      p_valor_cheio: valorCheioNum ?? null,
+      p_valor_recebido: valorRecebidoNum ?? null,
+      p_produto_id: selected.id,
+      p_produto_nome: selected.nome,
+      p_data: agoraISO,
+      p_data_ymd: hojeYMD,
+    });
 
-      const { error: insErr } = await supabase
-        .from('lancamentos_sobras')
-        .insert(payload);
-      if (insErr) {
-        setSaving(false);
-        setError(insErr.message);
-        return;
-      }
-
-      const { error: baixaErr } = await supabase
-        .from('lotes')
-        .update({ status: 'baixado' })
-        .eq('empresa_id', empresaId)
-        .eq('produto_id', selected.id)
-        .eq('status', 'aberto')
-        .lte('data_vencimento', hojeYMD);
-      if (baixaErr) {
-        console.error('[Lanc] baixar lotes vencidos:', baixaErr);
-      }
+    if (rpcErr) {
+      // mantem saveUuidRef.current para reusar no retry (idempotencia)
+      setSaving(false);
+      setError(rpcErr.message);
+      return;
     }
+
+    // 'ok' e 'duplicado' sao ambos sucesso
+    saveUuidRef.current = null;
 
     setSaving(false);
 
