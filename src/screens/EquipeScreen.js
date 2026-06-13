@@ -16,6 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Sentry from '@sentry/react-native';
 import { supabase } from '../services/supabase';
 import { colors } from '../theme/colors';
 import AppHeader from '../components/AppHeader';
@@ -287,6 +288,7 @@ export default function EquipeScreen() {
               .eq('id', membro.id)
               .eq('empresa_id', empresaId);
             if (error) {
+              Sentry.captureException(error, { tags: { fluxo: 'excluir_membro' } });
               Alert.alert('Erro', error.message);
               return;
             }
@@ -319,6 +321,7 @@ export default function EquipeScreen() {
       .eq('empresa_id', empresaId);
     setEditMembroSaving(false);
     if (error) {
+      Sentry.captureException(error, { tags: { fluxo: 'renomear_membro' } });
       Alert.alert('Erro', error.message);
       return;
     }

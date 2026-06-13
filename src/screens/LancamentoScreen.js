@@ -20,6 +20,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Crypto from 'expo-crypto';
+import * as Sentry from '@sentry/react-native';
 import { supabase } from '../services/supabase';
 import { colors } from '../theme/colors';
 import AppHeader from '../components/AppHeader';
@@ -516,6 +517,7 @@ export default function LancamentoScreen() {
       };
       const { error: insErr } = await supabase.from('lancamentos_sobras').insert(payload);
       if (insErr) {
+        Sentry.captureException(insErr, { tags: { fluxo: 'salvar_sacola' } });
         setSacolaSaving(false);
         setSacolaError(`Erro ao salvar "${item.produto_nome}": ${insErr.message}`);
         return;
@@ -811,65 +813,75 @@ export default function LancamentoScreen() {
     Keyboard.dismiss();
     setSaving(true);
 
-    const agora = new Date();
-    const agoraISO = agora.toISOString();
-    const hojeYMD = ymdLocal(agora);
+    let sucesso = false;
+    try {
+      const agora = new Date();
+      const agoraISO = agora.toISOString();
+      const hojeYMD = ymdLocal(agora);
 
-    // deriva o que a RPC precisa
-    const temLote =
-      temProducao && selected.validade_dias != null && selected.validade_dias >= 0;
-    let loteVencYMD = null;
-    if (temLote) {
-      const vencDate = new Date(agora);
-      vencDate.setDate(vencDate.getDate() + selected.validade_dias);
-      loteVencYMD = ymdLocal(vencDate);
-    }
+      // deriva o que a RPC precisa
+      const temLote =
+        temProducao && selected.validade_dias != null && selected.validade_dias >= 0;
+      let loteVencYMD = null;
+      if (temLote) {
+        const vencDate = new Date(agora);
+        vencDate.setDate(vencDate.getDate() + selected.validade_dias);
+        loteVencYMD = ymdLocal(vencDate);
+      }
 
-    // uuid de idempotencia: gera 1x, reusa em retry, limpa so no sucesso
-    if (!saveUuidRef.current) saveUuidRef.current = Crypto.randomUUID();
+      // uuid de idempotencia: gera 1x, reusa em retry, limpa so no sucesso
+      if (!saveUuidRef.current) saveUuidRef.current = Crypto.randomUUID();
 
-    const { error: rpcErr } = await supabase.rpc('salvar_lancamento', {
-      p_client_uuid: saveUuidRef.current,
-      p_tem_producao: temProducao,
-      p_producao_qtd: producaoNum,
-      p_tem_lote: temLote,
-      p_lote_venc: loteVencYMD,
-      p_tem_sobra: temSobra,
-      p_sobra_qtd: qNum,
-      p_unidade: unidade,
-      p_destino: destino,
-      p_valor_cheio: valorCheioNum ?? null,
-      p_valor_recebido: valorRecebidoNum ?? null,
-      p_produto_id: selected.id,
-      p_produto_nome: selected.nome,
-      p_data: agoraISO,
-      p_data_ymd: hojeYMD,
-    });
+      const { error: rpcErr } = await supabase.rpc('salvar_lancamento', {
+        p_client_uuid: saveUuidRef.current,
+        p_tem_producao: temProducao,
+        p_producao_qtd: producaoNum,
+        p_tem_lote: temLote,
+        p_lote_venc: loteVencYMD,
+        p_tem_sobra: temSobra,
+        p_sobra_qtd: qNum,
+        p_unidade: unidade,
+        p_destino: destino,
+        p_valor_cheio: valorCheioNum ?? null,
+        p_valor_recebido: valorRecebidoNum ?? null,
+        p_produto_id: selected.id,
+        p_produto_nome: selected.nome,
+        p_data: agoraISO,
+        p_data_ymd: hojeYMD,
+      });
 
-    if (rpcErr) {
-      // mantem saveUuidRef.current para reusar no retry (idempotencia)
+      if (rpcErr) {
+        // mantem saveUuidRef.current para reusar no retry (idempotencia)
+        Sentry.captureException(rpcErr, { tags: { fluxo: 'salvar_lancamento' } });
+        setError(rpcErr.message);
+        return;
+      }
+
+      // 'ok' e 'duplicado' sao ambos sucesso
+      saveUuidRef.current = null;
+
+      if (temProducao && temSobra) {
+        showToast('✓ Produção e lançamento salvos!');
+      } else if (temProducao) {
+        showToast('✓ Produção registrada!');
+      } else {
+        showToast('✓ Lançamento salvo!');
+      }
+
+      sucesso = true;
+    } catch (err) {
+      Sentry.captureException(err, { tags: { fluxo: 'salvar_lancamento_inesperado' } });
+      setError('Erro inesperado ao salvar. Tente novamente.');
+    } finally {
       setSaving(false);
-      setError(rpcErr.message);
-      return;
     }
 
-    // 'ok' e 'duplicado' sao ambos sucesso
-    saveUuidRef.current = null;
-
-    setSaving(false);
-
-    if (temProducao && temSobra) {
-      showToast('✓ Produção e lançamento salvos!');
-    } else if (temProducao) {
-      showToast('✓ Produção registrada!');
-    } else {
-      showToast('✓ Lançamento salvo!');
+    if (sucesso) {
+      resetForm();
+      await loadLancamentosHoje();
+      await loadProdutosVencendoHoje();
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
     }
-
-    resetForm();
-    await loadLancamentosHoje();
-    await loadProdutosVencendoHoje();
-    scrollRef.current?.scrollTo({ y: 0, animated: true });
   };
 
   return (
