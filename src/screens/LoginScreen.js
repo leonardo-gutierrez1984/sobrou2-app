@@ -15,6 +15,7 @@ import * as Linking from 'expo-linking';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../services/supabase';
+import { translateError } from '../utils/erros';
 
 const PALETTE = {
   cardBg: '#fdfaf4',
@@ -297,18 +298,6 @@ export default function LoginScreen() {
       </SafeAreaView>
     </View>
   );
-}
-
-function translateError(message) {
-  if (!message) return 'Erro ao autenticar. Tente novamente.';
-  const m = message.toLowerCase();
-  if (m.includes('invalid login credentials')) return 'E-mail ou senha inválidos.';
-  if (m.includes('email not confirmed')) return 'Confirme seu e-mail antes de entrar.';
-  if (m.includes('user already registered')) return 'Este e-mail já está cadastrado.';
-  if (m.includes('password should be at least'))
-    return 'A senha precisa ter pelo menos 6 caracteres.';
-  if (m.includes('unable to validate email')) return 'E-mail inválido.';
-  return message;
 }
 
 const styles = StyleSheet.create({
