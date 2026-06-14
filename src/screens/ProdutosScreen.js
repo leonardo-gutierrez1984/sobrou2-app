@@ -20,6 +20,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as XLSX from 'xlsx';
 import { supabase } from '../services/supabase';
 import { colors } from '../theme/colors';
+import { translateError } from '../utils/erros';
 import AppHeader from '../components/AppHeader';
 
 const UNIDADES = ['Un', 'Kg', 'Dz', 'L'];
@@ -90,7 +91,7 @@ export default function ProdutosScreen() {
 
       if (!mounted) return;
       if (membroErr) {
-        setLoadError(membroErr.message);
+        setLoadError(translateError(membroErr.message));
         setLoading(false);
         return;
       }
@@ -124,7 +125,7 @@ export default function ProdutosScreen() {
       .order('nome', { ascending: true });
     if (!mounted) return;
     if (error) {
-      setLoadError(error.message);
+      setLoadError(translateError(error.message));
     } else {
       setProdutos(data || []);
     }
@@ -237,7 +238,7 @@ export default function ProdutosScreen() {
     });
     setSaving(false);
     if (error) {
-      setFormError(error.message);
+      setFormError(translateError(error.message));
       return;
     }
     resetForm();
@@ -258,7 +259,7 @@ export default function ProdutosScreen() {
     const resultado = await arquivarOuExcluir([idAlvo]);
     setDeleting(false);
     if (resultado.erro) {
-      setLoadError(resultado.erro);
+      setLoadError(translateError(resultado.erro));
       if (empresaId) await loadProdutos(empresaId);
       return;
     }
@@ -276,7 +277,7 @@ export default function ProdutosScreen() {
       .eq('empresa_id', empresaId);
     setDeletingAll(false);
     if (error) {
-      setImportStatus('❌ Erro ao apagar: ' + error.message);
+      setImportStatus('❌ Erro ao apagar: ' + translateError(error.message));
     } else {
       setDeleteAllVisible(false);
       setDeleteAllConfirm('');
@@ -318,7 +319,7 @@ export default function ProdutosScreen() {
     setSelectionMode(false);
     setSelectedProducts([]);
     if (resultado.erro) {
-      setLoadError(resultado.erro);
+      setLoadError(translateError(resultado.erro));
       if (empresaId) await loadProdutos(empresaId);
       return;
     }
@@ -1014,7 +1015,7 @@ function ProductFormModal({ visible, produto, userId, empresaId, onClose, onSave
     }
     setSaving(false);
     if (result.error) {
-      setError(result.error.message);
+      setError(translateError(result.error.message));
       return;
     }
     onSaved();
