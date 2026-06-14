@@ -122,6 +122,7 @@ export default function LancamentoScreen() {
   const formCardY = useRef(0);
   const fieldY = useRef({});
   const saveUuidRef = useRef(null);
+  const sacolaUuidRef = useRef(null);
 
   const [toast, setToast] = useState('');
   const toastAnim = useRef(new Animated.Value(0)).current;
@@ -500,40 +501,58 @@ export default function LancamentoScreen() {
 
     Keyboard.dismiss();
     setSacolaSaving(true);
-    const now = new Date().toISOString();
-    for (let i = 0; i < sacola.length; i++) {
-      const item = sacola[i];
-      const payload = {
-        empresa_id: empresaId,
-        user_id: userId,
-        produto_id: item.produto_id,
-        produto_nome: item.produto_nome,
-        quantidade: item.quantidade,
-        unidade: item.unidade,
-        destino: 'Venda Resgatada',
-        data: now,
-        valor_cheio: i === 0 ? vc : null,
-        valor_recebido: i === 0 ? vr : null,
-      };
-      const { error: insErr } = await supabase.from('lancamentos_sobras').insert(payload);
-      if (insErr) {
-        Sentry.captureException(insErr, { tags: { fluxo: 'salvar_sacola' } });
-        setSacolaSaving(false);
-        setSacolaError(`Erro ao salvar "${item.produto_nome}": ${insErr.message}`);
+
+    let sucesso = false;
+    try {
+      const now = new Date().toISOString();
+
+      // uuid de idempotencia: gera 1x, reusa em retry, limpa so no sucesso
+      if (!sacolaUuidRef.current) sacolaUuidRef.current = Crypto.randomUUID();
+
+      const itens = sacola.map((it) => ({
+        produto_id: it.produto_id,
+        produto_nome: it.produto_nome,
+        quantidade: it.quantidade,
+        unidade: it.unidade,
+      }));
+
+      const { error: rpcErr } = await supabase.rpc('salvar_sacola', {
+        p_client_uuid: sacolaUuidRef.current,
+        p_itens: itens,
+        p_valor_cheio: vc,
+        p_valor_recebido: vr,
+        p_data: now,
+      });
+
+      if (rpcErr) {
+        // mantem sacolaUuidRef.current para reusar no retry (idempotencia)
+        Sentry.captureException(rpcErr, { tags: { fluxo: 'salvar_sacola' } });
+        setSacolaError(rpcErr.message);
         return;
       }
+
+      // 'ok' e 'duplicado' sao ambos sucesso
+      sacolaUuidRef.current = null;
+      showToast('✓ Sacola de venda registrada!');
+      sucesso = true;
+    } catch (err) {
+      Sentry.captureException(err, { tags: { fluxo: 'salvar_sacola_inesperado' } });
+      setSacolaError('Erro inesperado ao salvar. Tente novamente.');
+    } finally {
+      setSacolaSaving(false);
     }
-    setSacolaSaving(false);
-    setSacola([]);
-    setSacolaValorCheio('');
-    setSacolaValorRecebido('');
-    setSacolaProdutoSelecionado(null);
-    setSacolaBusca('');
-    setSacolaQtd('');
-    setSacolaVerTodos(false);
-    showToast('✓ Sacola de venda registrada!');
-    await loadLancamentosHoje();
-    await loadProdutosVencendoHoje();
+
+    if (sucesso) {
+      setSacola([]);
+      setSacolaValorCheio('');
+      setSacolaValorRecebido('');
+      setSacolaProdutoSelecionado(null);
+      setSacolaBusca('');
+      setSacolaQtd('');
+      setSacolaVerTodos(false);
+      await loadLancamentosHoje();
+      await loadProdutosVencendoHoje();
+    }
   };
 
   const planejProdutosFiltrados = useMemo(() => {
