@@ -21,6 +21,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import AppHeader from '../components/AppHeader';
 import { supabase } from '../services/supabase';
 import { colors } from '../theme/colors';
+import { translateError } from '../utils/erros';
 import {
   DESTINOS,
   getDestinoColor,
@@ -101,7 +102,7 @@ export default function InicioScreen() {
           .maybeSingle();
         if (!mounted) return;
         if (membroErr) {
-          setBootError(membroErr.message);
+          setBootError(translateError(membroErr.message));
           setBootLoading(false);
           return;
         }
@@ -114,7 +115,7 @@ export default function InicioScreen() {
         setBootLoading(false);
       } catch (err) {
         if (!mounted) return;
-        setBootError(err?.message || 'Erro inesperado.');
+        setBootError(translateError(err?.message));
         setBootLoading(false);
       }
     })();
@@ -278,7 +279,7 @@ export default function InicioScreen() {
       .eq('id', editingLanc.id);
     setEditSaving(false);
     if (error) {
-      setEditError(error.message);
+      setEditError(translateError(error.message));
       return;
     }
     closeEdit();
@@ -301,7 +302,7 @@ export default function InicioScreen() {
               .delete()
               .eq('id', lanc.id);
             if (error) {
-              Alert.alert('Erro', error.message);
+              Alert.alert('Erro', translateError(error.message));
               return;
             }
             showToast('Lançamento excluído.');
