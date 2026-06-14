@@ -22,6 +22,7 @@ import * as Sharing from 'expo-sharing';
 import * as Print from 'expo-print';
 import { supabase } from '../services/supabase';
 import { colors } from '../theme/colors';
+import { translateError } from '../utils/erros';
 import AppHeader from '../components/AppHeader';
 import { formatBRL, formatarQuantidade, calcularPrejuizo } from '../utils/lancamentos';
 
@@ -170,7 +171,7 @@ export default function PainelScreen() {
           .maybeSingle();
         if (!mounted) return;
         if (membroErr) {
-          setErrorMsg(membroErr.message);
+          setErrorMsg(translateError(membroErr.message));
           setLoadingMembro(false);
           return;
         }
@@ -183,7 +184,7 @@ export default function PainelScreen() {
         setLoadingMembro(false);
       } catch (err) {
         if (!mounted) return;
-        setErrorMsg(err?.message || 'Erro inesperado.');
+        setErrorMsg(translateError(err?.message));
         setLoadingMembro(false);
       }
     })();
@@ -213,7 +214,7 @@ export default function PainelScreen() {
         .order('data', { ascending: false });
 
       if (error) {
-        setErrorMsg(error.message);
+        setErrorMsg(translateError(error.message));
         setLancamentos([]);
       } else {
         setLancamentos(data || []);
@@ -231,7 +232,7 @@ export default function PainelScreen() {
         .lte('data', prevFim.toISOString());
       setAnteriores(prevData || []);
     } catch (err) {
-      setErrorMsg(err?.message || 'Erro ao carregar dados.');
+      setErrorMsg(translateError(err?.message));
     } finally {
       setLoading(false);
     }
