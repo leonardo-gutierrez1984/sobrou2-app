@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Sentry from '@sentry/react-native';
 import { supabase } from '../services/supabase';
 import { colors } from '../theme/colors';
+import { translateError } from '../utils/erros';
 import AppHeader from '../components/AppHeader';
 
 const PAPEIS = [
@@ -87,7 +88,7 @@ export default function EquipeScreen() {
           .maybeSingle();
         if (!mounted) return;
         if (membroErr) {
-          setBootError(membroErr.message);
+          setBootError(translateError(membroErr.message));
           setLoading(false);
           return;
         }
@@ -100,7 +101,7 @@ export default function EquipeScreen() {
       } catch (err) {
         if (!mounted) return;
         console.error('[Equipe] boot threw:', err);
-        setBootError(err?.message || 'Erro inesperado.');
+        setBootError(translateError(err?.message));
         setLoading(false);
       }
     })();
@@ -198,7 +199,7 @@ export default function EquipeScreen() {
       .eq('id', empresaId);
     setSavingEmpresa(false);
     if (error) {
-      Alert.alert('Erro', error.message);
+      Alert.alert('Erro', translateError(error.message));
       return;
     }
     setEmpresa((e) => (e ? { ...e, nome: novo } : e));
@@ -226,7 +227,7 @@ export default function EquipeScreen() {
       .limit(1);
     if (existsErr) {
       setInviting(false);
-      Alert.alert('Erro', existsErr.message);
+      Alert.alert('Erro', translateError(existsErr.message));
       return;
     }
     if (existsList && existsList.length > 0) {
@@ -257,7 +258,7 @@ export default function EquipeScreen() {
     const { error: insErr } = await supabase.from('membros').insert(payload);
     setInviting(false);
     if (insErr) {
-      Alert.alert('Erro', insErr.message);
+      Alert.alert('Erro', translateError(insErr.message));
       return;
     }
 
@@ -289,7 +290,7 @@ export default function EquipeScreen() {
               .eq('empresa_id', empresaId);
             if (error) {
               Sentry.captureException(error, { tags: { fluxo: 'excluir_membro' } });
-              Alert.alert('Erro', error.message);
+              Alert.alert('Erro', translateError(error.message));
               return;
             }
             showToast('Membro removido');
@@ -322,7 +323,7 @@ export default function EquipeScreen() {
     setEditMembroSaving(false);
     if (error) {
       Sentry.captureException(error, { tags: { fluxo: 'renomear_membro' } });
-      Alert.alert('Erro', error.message);
+      Alert.alert('Erro', translateError(error.message));
       return;
     }
     closeEditMembro();
