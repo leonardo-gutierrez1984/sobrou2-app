@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../services/supabase';
 import { colors } from '../theme/colors';
+import { translateError } from '../utils/erros';
 
 export default function OnboardingScreen({ onComplete }) {
   const [nome, setNome] = useState('');
@@ -91,7 +92,7 @@ export default function OnboardingScreen({ onComplete }) {
 
     if (rpcErr) {
       console.log('[Onboarding] rpcErr completo:', JSON.stringify(rpcErr));
-      setError(rpcErr.message);
+      setError(translateError(rpcErr.message));
       return;
     }
 
