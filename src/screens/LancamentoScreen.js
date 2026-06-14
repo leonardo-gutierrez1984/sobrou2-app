@@ -30,6 +30,7 @@ import {
   formatBRL,
   formatarQuantidade,
 } from '../utils/lancamentos';
+import { translateError } from '../utils/erros';
 
 const SERIF = Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' });
 
@@ -194,7 +195,7 @@ export default function LancamentoScreen() {
 
         if (membroRes.error) {
           console.error('[Lanc] membros error:', membroRes.error);
-          setProdutosError(membroRes.error.message);
+          setProdutosError(translateError(membroRes.error.message));
           setLoadingProdutos(false);
           return;
         }
@@ -215,7 +216,7 @@ export default function LancamentoScreen() {
           );
         } else {
           console.error('[Lanc] unexpected error:', err);
-          setProdutosError(err?.message || 'Erro inesperado ao carregar produtos.');
+          setProdutosError(translateError(err?.message));
         }
         setLoadingProdutos(false);
       }
@@ -240,7 +241,7 @@ export default function LancamentoScreen() {
       );
       if (err) {
         console.error('[Lanc] loadProdutos error:', err);
-        setProdutosError(err.message);
+        setProdutosError(translateError(err.message));
       } else {
         setProdutos(data || []);
         setProdutosError('');
@@ -249,7 +250,7 @@ export default function LancamentoScreen() {
       if (isTimeoutError(err)) {
         setProdutosError('Tempo esgotado ao carregar produtos. Verifique sua conexão.');
       } else {
-        setProdutosError(err?.message || 'Erro ao carregar produtos.');
+        setProdutosError(translateError(err?.message));
       }
     }
     setLoadingProdutos(false);
@@ -386,7 +387,7 @@ export default function LancamentoScreen() {
       .eq('id', editingLanc.id);
     setEditSaving(false);
     if (upErr) {
-      setEditError(upErr.message);
+      setEditError(translateError(upErr.message));
       return;
     }
     closeEdit();
@@ -410,7 +411,7 @@ export default function LancamentoScreen() {
               .delete()
               .eq('id', lanc.id);
             if (delErr) {
-              Alert.alert('Erro', delErr.message);
+              Alert.alert('Erro', translateError(delErr.message));
               return;
             }
             showToast('Lançamento excluído.');
@@ -527,7 +528,7 @@ export default function LancamentoScreen() {
       if (rpcErr) {
         // mantem sacolaUuidRef.current para reusar no retry (idempotencia)
         Sentry.captureException(rpcErr, { tags: { fluxo: 'salvar_sacola' } });
-        setSacolaError(rpcErr.message);
+        setSacolaError(translateError(rpcErr.message));
         return;
       }
 
@@ -635,7 +636,7 @@ export default function LancamentoScreen() {
       });
       if (insErr) {
         setPlanejSaving(false);
-        setPlanejError(`Erro ao salvar "${item.produto_nome}": ${insErr.message}`);
+        setPlanejError(`Erro ao salvar "${item.produto_nome}": ${translateError(insErr.message)}`);
         return;
       }
     }
@@ -685,7 +686,7 @@ export default function LancamentoScreen() {
               .delete()
               .eq('id', item.id);
             if (delErr) {
-              Alert.alert('Erro', delErr.message);
+              Alert.alert('Erro', translateError(delErr.message));
               return;
             }
             showToast('Item removido do planejamento.');
@@ -872,7 +873,7 @@ export default function LancamentoScreen() {
       if (rpcErr) {
         // mantem saveUuidRef.current para reusar no retry (idempotencia)
         Sentry.captureException(rpcErr, { tags: { fluxo: 'salvar_lancamento' } });
-        setError(rpcErr.message);
+        setError(translateError(rpcErr.message));
         return;
       }
 
