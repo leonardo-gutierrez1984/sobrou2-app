@@ -4,9 +4,8 @@
   },
   "build": {
     "preview": {
-      "android": {
-        "buildType": "apk"
-      }
+      "android": { "buildType": "apk" },
+      "env": { "SENTRY_DISABLE_AUTO_UPLOAD": "true" }
     },
     "production": {
       "android": {
