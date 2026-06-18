@@ -124,6 +124,7 @@ export default function LancamentoScreen() {
   const fieldY = useRef({});
   const saveUuidRef = useRef(null);
   const sacolaUuidRef = useRef(null);
+  const planejUuidRef = useRef(null);
 
   const [toast, setToast] = useState('');
   const toastAnim = useRef(new Animated.Value(0)).current;
@@ -622,31 +623,52 @@ export default function LancamentoScreen() {
       return;
     }
     setPlanejSaving(true);
-    const amanha = new Date();
-    amanha.setDate(amanha.getDate() + 1);
-    const dataISO = amanha.toISOString();
 
-    for (const item of planejList) {
-      const { error: insErr } = await supabase.from('producao').insert({
-        empresa_id: empresaId,
-        user_id: userId,
-        produto_id: item.produto_id,
-        quantidade: item.quantidade,
-        data: dataISO,
+    let sucesso = false;
+    try {
+      const amanha = new Date();
+      amanha.setDate(amanha.getDate() + 1);
+      const dataISO = amanha.toISOString();
+
+      // uuid de idempotencia: gera 1x, reusa em retry, limpa so no sucesso
+      if (!planejUuidRef.current) planejUuidRef.current = Crypto.randomUUID();
+
+      const itens = planejList.map((i) => ({
+        produto_id: i.produto_id,
+        quantidade: i.quantidade,
+      }));
+
+      const { error: rpcErr } = await supabase.rpc('salvar_planejamento', {
+        p_client_uuid: planejUuidRef.current,
+        p_itens: itens,
+        p_data: dataISO,
       });
-      if (insErr) {
-        setPlanejSaving(false);
-        setPlanejError(`Erro ao salvar "${item.produto_nome}": ${translateError(insErr.message)}`);
+
+      if (rpcErr) {
+        // mantem planejUuidRef.current para reusar no retry (idempotencia)
+        Sentry.captureException(rpcErr, { tags: { fluxo: 'salvar_planejamento' } });
+        setPlanejError(translateError(rpcErr.message));
         return;
       }
+
+      // 'ok' e 'duplicado' sao ambos sucesso
+      planejUuidRef.current = null;
+      showToast('✓ Planejamento de amanhã salvo!');
+      sucesso = true;
+    } catch (err) {
+      Sentry.captureException(err, { tags: { fluxo: 'salvar_planejamento_inesperado' } });
+      setPlanejError('Erro inesperado ao salvar. Tente novamente.');
+    } finally {
+      setPlanejSaving(false);
     }
-    setPlanejSaving(false);
-    setPlanejList([]);
-    setPlanejProduto(null);
-    setPlanejBusca('');
-    setPlanejQtd('');
-    showToast('✓ Planejamento de amanhã salvo!');
-    await loadPlanejamentoAmanha();
+
+    if (sucesso) {
+      setPlanejList([]);
+      setPlanejProduto(null);
+      setPlanejBusca('');
+      setPlanejQtd('');
+      await loadPlanejamentoAmanha();
+    }
   };
 
   const loadPlanejamentoAmanha = async (empId = empresaId) => {
