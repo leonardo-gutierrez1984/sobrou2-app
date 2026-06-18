@@ -1025,7 +1025,7 @@ function ProductFormModal({ visible, produto, userId, empresaId, onClose, onSave
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalBackdrop}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.modalKAV}
         >
           <View style={styles.modalCard}>

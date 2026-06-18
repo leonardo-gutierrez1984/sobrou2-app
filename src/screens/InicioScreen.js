@@ -616,7 +616,7 @@ export default function InicioScreen() {
       >
         <View style={styles.modalBackdrop}>
           <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={{ width: '100%' }}
           >
             <View style={styles.modalCard}>

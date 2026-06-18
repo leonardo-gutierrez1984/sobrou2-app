@@ -358,7 +358,7 @@ export default function EquipeScreen() {
       <AppHeader />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <ScrollView
           contentContainerStyle={styles.container}
@@ -577,7 +577,7 @@ export default function EquipeScreen() {
       >
         <View style={styles.modalBackdrop}>
           <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={{ width: '100%' }}
           >
             <View style={styles.modalCard}>

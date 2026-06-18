@@ -909,7 +909,7 @@ export default function LancamentoScreen() {
       <AppHeader />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <ScrollView
           ref={scrollRef}
@@ -1730,7 +1730,7 @@ export default function LancamentoScreen() {
       >
         <View style={styles.modalBackdrop}>
           <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={{ width: '100%' }}
           >
             <View style={styles.modalCard}>
