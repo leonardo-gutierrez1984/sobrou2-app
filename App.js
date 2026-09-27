@@ -7,6 +7,7 @@ import AppNavigator from './src/navigation/AppNavigator';
 import LoginScreen from './src/screens/LoginScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import ResetPasswordScreen from './src/screens/ResetPasswordScreen';
+import AssinaturaBloqueadaScreen from './src/screens/AssinaturaBloqueadaScreen';
 import { supabase } from './src/services/supabase';
 import { colors } from './src/theme/colors';
 import * as Sentry from '@sentry/react-native';
@@ -25,6 +26,7 @@ function App() {
   const [hasEmpresa, setHasEmpresa] = useState(null);
   const [loading, setLoading] = useState(true);
   const [passwordRecovery, setPasswordRecovery] = useState(false);
+  const [assinaturaAtiva, setAssinaturaAtiva] = useState(true);
 
   useEffect(() => {
     console.log('[App] useEffect running');
@@ -45,6 +47,32 @@ function App() {
         setTimeout(() => resolve({ __timeout: true }), CHECK_TIMEOUT_MS)
       );
       return Promise.race([query, timeout]);
+    };
+
+    // Fail-open: so bloqueia se a RPC responder com sucesso e o valor for exatamente false.
+    const checkAssinatura = async () => {
+      try {
+        const timeout = new Promise((resolve) =>
+          setTimeout(() => resolve({ __timeout: true }), CHECK_TIMEOUT_MS)
+        );
+        const result = await Promise.race([
+          supabase.rpc('minha_assinatura_ativa'),
+          timeout,
+        ]);
+        if (result.__timeout) {
+          console.warn(`[App] checkAssinatura timed out after ${CHECK_TIMEOUT_MS}ms — liberando`);
+          return true;
+        }
+        if (result.error) {
+          console.warn('[App] checkAssinatura error — liberando:', result.error);
+          return true;
+        }
+        console.log('[App] checkAssinatura result:', result.data);
+        return result.data !== false;
+      } catch (err) {
+        console.warn('[App] checkAssinatura threw — liberando:', err);
+        return true;
+      }
     };
 
     const checkEmpresa = async (userId) => {
@@ -81,6 +109,9 @@ function App() {
 
           const found = (data || []).length > 0;
           console.log('[App] checkEmpresa result:', { userId, attempt, found, data });
+          const ativa = found ? await checkAssinatura() : true;
+          if (!mounted) return;
+          setAssinaturaAtiva(ativa);
           setHasEmpresa(found);
           return;
         } catch (err) {
@@ -183,6 +214,7 @@ function App() {
         } else if (event === 'SIGNED_OUT') {
           setSession(null);
           setHasEmpresa(null);
+          setAssinaturaAtiva(true);
         } else if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
           setSession(newSession);
         }
@@ -219,6 +251,9 @@ function App() {
     }
     if (!hasEmpresa) {
       return <OnboardingScreen onComplete={() => setHasEmpresa(true)} />;
+    }
+    if (assinaturaAtiva === false) {
+      return <AssinaturaBloqueadaScreen />;
     }
     return <AppNavigator navigationRef={navigationRef} />;
   };
