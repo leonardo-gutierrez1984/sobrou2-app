@@ -21,6 +21,7 @@ import { supabase } from '../services/supabase';
 import { colors } from '../theme/colors';
 import { translateError } from '../utils/erros';
 import AppHeader from '../components/AppHeader';
+import Constants from 'expo-constants';
 
 const PAPEIS = [
   { id: 'operador', label: 'Operador', emoji: '🔧' },
@@ -522,6 +523,10 @@ export default function EquipeScreen() {
               </TouchableOpacity>
             </View>
           ) : null}
+
+          <Text style={styles.versao}>
+            Sobrou versão {Constants.expoConfig?.version ?? '?'}
+          </Text>
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -654,6 +659,12 @@ export default function EquipeScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   container: { paddingBottom: 40 },
+  versao: {
+    color: colors.muted,
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 16,
+  },
 
   // Header compacto
   screenHeader: {
